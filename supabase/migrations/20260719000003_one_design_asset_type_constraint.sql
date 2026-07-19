@@ -3,7 +3,8 @@
 -- categories can be stored. Run AFTER the normalization migration.
 -- Idempotent.
 
-drop constraint if exists assets_type_check on public.assets;
+alter table public.assets
+  drop constraint if exists assets_type_check;
 
 alter table public.assets
   add constraint assets_type_check

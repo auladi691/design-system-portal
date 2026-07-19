@@ -13,7 +13,8 @@
     "test": "npm run lint && npm run build",
     "validate:artifact": "next build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern build --ignore-pattern worker --ignore-pattern db --ignore-pattern examples",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "db:migrate": "node scripts/supabase-migrate.mjs --yes"
   },
   "dependencies": {
     "@supabase/ssr": "0.10.3",
@@ -34,6 +35,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "pg": "8.13.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",

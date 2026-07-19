@@ -4,7 +4,10 @@
 
 create extension if not exists "pgcrypto";
 
-create type public.content_status as enum ('draft', 'published', 'archived');
+do $$ begin
+  create type public.content_status as enum ('draft', 'published', 'archived');
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists public.administrators (
   user_id uuid primary key references auth.users(id) on delete cascade,
