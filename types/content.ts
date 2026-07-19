@@ -1,6 +1,7 @@
 export type PageType = "design" | "foundation" | "component" | "pattern" | "resource";
 export type PageStatus = "draft" | "published" | "archived";
 export type AssetType = "icon" | "icon-illustration" | "illustration" | "logo" | "brand-asset" | "template" | "download";
+export type AssetBrand = "Shared" | "IM3" | "Indosat" | "Tri" | "Partner";
 
 export type ContentPage = {
   id: string;
@@ -33,13 +34,20 @@ export type Asset = {
   name: string;
   slug: string;
   category: string;
-  brand: "Shared" | "IM3" | "Indosat" | "Tri" | "Partner";
+  brand: AssetBrand;
   status: PageStatus;
   description: string;
   keywords: string[];
   glyph: string;
   version: string;
   updatedAt: string;
+  altText: string;
+  filePath: string | null;
+  fileUrl: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  originalFileName: string | null;
+  createdAt: string;
 };
 
 export type Release = {
@@ -52,14 +60,62 @@ export type Release = {
   changes: string[];
 };
 
+export type SiteSettings = {
+  name: string;
+  tagline: string;
+  description: string;
+  visibility: "public" | "unlisted";
+};
+
 export type SiteData = {
-  settings: {
-    name: string;
-    tagline: string;
-    description: string;
-    visibility: "public" | "unlisted";
-  };
+  settings: SiteSettings;
   pages: ContentPage[];
   assets: Asset[];
   releases: Release[];
+};
+
+export type AssetCategoryConfig = {
+  slug: AssetType;
+  label: string;
+  singularLabel: string;
+  description: string;
+  emptyMessage: string;
+  allowedExtensions: readonly string[];
+  allowedMimeTypes: readonly string[];
+  maxSizeBytes: number;
+  showBrandFilter: boolean;
+  visual: boolean;
+};
+
+export type BulkUploadFileStatus =
+  | "queued"
+  | "validating"
+  | "ready"
+  | "uploading"
+  | "success"
+  | "failed"
+  | "cancelled";
+
+export type BulkUploadFile = {
+  id: string;
+  file: File;
+  name: string;
+  slug: string;
+  category: string;
+  brand: AssetBrand;
+  description: string;
+  keywords: string[];
+  version: string;
+  altText: string;
+  status: BulkUploadFileStatus;
+  progress: number;
+  error: string | null;
+  validationErrors: string[];
+  result?: { asset: Asset };
+};
+
+export type Toast = {
+  id: string;
+  tone: "success" | "error" | "warning" | "info";
+  message: string;
 };

@@ -2,6 +2,8 @@
 
 Name: **Monochrome Editorial**.
 
+The product is **One Design**. The logo lettermark is `O`. Visual direction stays neutral-first with one selected accent. Light and dark mode are both first-class.
+
 ## Principles
 
 1. Express through typography, spacing, composition, assets, and motion—not excessive color.
@@ -17,3 +19,7 @@ Use no more than two font families and four weights. Body text is 16–18px with
 ## Surfaces
 
 Use semantic variables: page, primary, secondary, elevated, inverse. Avoid rainbow card grids, heavy shadows, excessive glass, and gradient text.
+
+## Copy
+
+English only. Write for UI/UX designers, not engineers. Avoid backend jargon. Do not mix languages. Token names, filenames, and file formats are not translated.

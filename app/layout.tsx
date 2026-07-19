@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nusa Design System",
-  description: "Foundation, component, pattern, dan aset untuk pengalaman yang lebih konsisten.",
+  title: "One Design",
+  description: "One place to find foundations, components, patterns, and assets that help designers create consistent experiences.",
   robots: { index: false, follow: false },
   other: {
     "codex-preview": "development",
@@ -31,7 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

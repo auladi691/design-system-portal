@@ -10,6 +10,10 @@ Overview, Principles, Token collection, Hierarchy, Usage, Examples, Accessibilit
 
 ## Writing
 
-Write for UI/UX designers in clear Indonesian. Keep familiar design terms (component, variant, state, token, spacing, grid, focus) and explain them on first use. Do not expose API, props, DOM, React, schema, endpoint, cache, or deployment language.
+Write for UI/UX designers in clear English. Keep familiar design terms (component, variant, state, token, spacing, grid, focus) and explain them on first use. Do not expose API, props, DOM, React, schema, endpoint, cache, or deployment language.
 
-Every page should answer: what is it, when to use it, how to use it, what to avoid, and what changes for accessibility/responsive behavior.
+Every page should answer: what is it, when to use it, how to use it, what to avoid, and what changes for accessibility or responsive behavior.
+
+## Language
+
+One Design is English-only. There is no Bahasa Indonesia mode, no language switcher, and no locale selector. Do not mix languages. Token names, filenames, URLs, code snippets, and file formats are not translated.

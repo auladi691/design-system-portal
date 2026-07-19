@@ -1,15 +1,15 @@
-# Nusa Design System Portal & CMS
+# One Design Portal & Studio
 
-Portal dokumentasi untuk UI/UX designer dengan CMS Administrator, Asset Explorer, token import, light/dark mode, dan motion yang terkontrol.
+A documentation portal for UI/UX designers with a CMS for administrators, Asset Library, token import, light/dark mode, and restrained motion.
 
-## Menjalankan lokal
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Portal tersedia dari `/`. CMS tersedia dari `/studio/login`. Pada demo lokal, email dan password apa pun dapat digunakan. Ganti autentikasi demo dengan Supabase Auth sebelum produksi.
+The Portal is available at `/`. The CMS is available at `/studio/login`. Connect Supabase before signing in; the demo login has been removed.
 
 ## Build
 
@@ -17,15 +17,30 @@ Portal tersedia dari `/`. CMS tersedia dari `/studio/login`. Pada demo lokal, em
 npm run build
 ```
 
-Proyek menggunakan Next.js dan dapat dipasang di Vercel. Salin `.env.example` menjadi `.env.local` saat Supabase diaktifkan.
+The project uses Next.js and deploys to Vercel. Copy `.env.example` to `.env.local` and add Supabase credentials.
 
-## Keputusan penting
+## Important decisions
 
-- Portal tidak membutuhkan login dan memakai `noindex`.
-- CMS hanya untuk Administrator.
-- Figma API tidak digunakan.
-- Token sumber memakai format plugin Figma Design Tokens.
-- Semua konten editorial dikelola dari CMS; renderer dan behavior berada di kode.
-- UI memakai neutral-first color, light/dark mode, dan Bahasa Indonesia yang mudah dipahami designer.
+- Portal requires no login and uses `noindex`.
+- CMS is for Administrators only (Supabase Auth + `public.administrators`).
+- Figma API is not used.
+- Token source uses the Figma Design Tokens plugin JSON export.
+- All editorial content is managed from the CMS; renderers and behavior live in code.
+- UI uses neutral-first color, light/dark mode, and English copy written for designers.
 
-Mulai dari [AGENTS.md](./AGENTS.md) sebelum mengubah proyek.
+Read [AGENTS.md](./AGENTS.md) before changing the project.
+
+## Supabase setup
+
+1. Create a Supabase project.
+2. Run `supabase/schema.sql` in the Supabase SQL editor.
+3. Run each file in `supabase/migrations/` in order.
+4. Create the `design-system-assets` Storage bucket (the schema creates it if missing).
+5. Add your administrator account to `public.administrators`:
+
+```sql
+insert into public.administrators (user_id)
+values ('your-auth-user-id');
+```
+
+6. Set the environment variables listed in `.env.example`.
