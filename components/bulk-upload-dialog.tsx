@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
+import { useDialogFocus } from "@/components/dialog-focus";
 import { ASSET_CATEGORIES, ASSET_CATEGORY_MAP, formatFileSize } from "@/lib/asset-categories";
 import { validateAssetFile } from "@/lib/asset-validation";
 import { makeItemFromFile, runBulkUpload, type BulkUploadItem } from "@/lib/bulk-upload";
@@ -27,6 +28,8 @@ export function BulkUploadDialog({ open, initialCategory, existingSlugs, onClose
   const [wasOpen, setWasOpen] = useState(open);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   if (wasOpen !== open) {
     setWasOpen(open);
@@ -143,7 +146,7 @@ export function BulkUploadDialog({ open, initialCategory, existingSlugs, onClose
 
   return (
     <div className="dialog-backdrop" onClick={() => !running && onClose()} role="presentation">
-      <div className="bulk-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-upload-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="bulk-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="bulk-upload-title" onClick={(e) => e.stopPropagation()}>
         <header className="bulk-header">
           <div>
             <span className="eyebrow">Bulk upload</span>

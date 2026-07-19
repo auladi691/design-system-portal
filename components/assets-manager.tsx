@@ -6,7 +6,7 @@ import { AssetEditor } from "@/components/asset-editor";
 import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ASSET_CATEGORIES, categoryLabel } from "@/lib/asset-categories";
-import { deleteStoragePath, deleteStoragePaths } from "@/lib/asset-storage";
+import { deleteStoragePath } from "@/lib/asset-storage";
 import { friendlyErrorMessage } from "@/lib/repository";
 import { pushToast } from "@/lib/toast";
 import { slugify, uniqueSlug } from "@/lib/slug";
@@ -94,9 +94,14 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   const deleteAsset = async (asset: Asset) => {
     setBusy(true);
     try {
-      if (asset.filePath) await deleteStoragePath(asset.filePath);
       const result = await app.removeAsset(asset.id);
       if (!result.ok) throw new Error(result.error ?? "We couldn't delete this asset.");
+      const storageDeleted = await deleteStoragePath(asset.filePath ?? "");
+      if (!storageDeleted) {
+        const restored = await app.upsertAsset(asset);
+        if (!restored.ok) throw new Error("The asset record was removed, but its file could not be cleaned up.");
+        throw new Error("We couldn't remove the asset file. The asset record was restored.");
+      }
       pushToast("success", "Asset deleted.");
       if (selected?.id === asset.id) setSelected(null);
       setConfirmSingleDelete(null);
@@ -156,23 +161,29 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   const bulkDelete = async () => {
     setBusy(true);
     const targets = app.data.assets.filter((a) => selection.has(a.id));
-    const paths = targets.map((t) => t.filePath).filter(Boolean) as string[];
     let ok = 0;
-    const failed: string[] = [];
+    let databaseFailures = 0;
+    let storageFailures = 0;
     try {
-      const storageResult = await deleteStoragePaths(paths);
-      const failedStoragePaths = new Set(storageResult.failed);
       for (const target of targets) {
-        if (target.filePath && failedStoragePaths.has(target.filePath)) {
-          failed.push(target.name);
-          continue;
+        try {
+          const result = await app.removeAsset(target.id);
+          if (!result.ok) {
+            databaseFailures += 1;
+            continue;
+          }
+          const storageDeleted = await deleteStoragePath(target.filePath ?? "");
+          if (storageDeleted) {
+            ok += 1;
+            continue;
+          }
+          storageFailures += 1;
+          const restored = await app.upsertAsset(target);
+          if (!restored.ok) pushToast("error", `We couldn't restore ${target.name} after file cleanup failed.`);
+        } catch {
+          databaseFailures += 1;
         }
-        const result = await app.removeAsset(target.id);
-        if (result.ok) ok += 1;
-        else failed.push(target.name);
       }
-      const databaseFailures = failed.length;
-      const storageFailures = storageResult.failed.length;
       if (!databaseFailures && !storageFailures) {
         pushToast("success", `${ok} asset${ok === 1 ? "" : "s"} deleted.`);
       } else {

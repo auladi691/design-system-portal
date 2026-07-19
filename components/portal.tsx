@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppContext } from "@/components/design-system-app";
 import { Icon } from "@/components/icons";
 import { ASSET_CATEGORIES, ASSET_CATEGORY_MAP, categoryLabel, formatFileSize } from "@/lib/asset-categories";
 import { collectionRouteForType, routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
+import { useDialogFocus } from "@/components/dialog-focus";
 import type { Asset, ContentPage } from "@/types/content";
 
 const nav = ["Design", "Foundations", "Components", "Patterns", "Resources"];
@@ -472,6 +473,8 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
 
 function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
   const [bg, setBg] = useState<"light" | "dark" | "brand">("light");
+  const drawerRef = useRef<HTMLElement>(null);
+  useDialogFocus(drawerRef, true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", onKey);
@@ -481,7 +484,7 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
   const canDownload = Boolean(asset.fileUrl);
   return (
     <div className="drawer-backdrop" onClick={close}>
-      <aside className="asset-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${asset.name} details`} aria-modal="true">
+       <aside ref={drawerRef} className="asset-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${asset.name} details`} aria-modal="true">
         <button className="drawer-close" onClick={close} aria-label="Close details"><Icon name="close" /></button>
         <div className={`drawer-preview preview-${bg}`} aria-hidden="true">
           {canPreviewImage ? (
@@ -679,6 +682,8 @@ function SearchResults({ app, onChoose }: { app: AppContext; onChoose?: () => vo
 }
 
 function SearchDialog({ app, close }: { app: AppContext; close: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", onKey);
@@ -686,7 +691,7 @@ function SearchDialog({ app, close }: { app: AppContext; close: () => void }) {
   }, [close]);
   return (
     <div className="search-overlay" onClick={close}>
-      <div className="search-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search">
+       <div ref={dialogRef} className="search-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search">
         <button className="drawer-close" onClick={close} aria-label="Close search"><Icon name="close" /></button>
         <SearchResults app={app} onChoose={close} />
         <small>Press Esc to close</small>

@@ -61,14 +61,16 @@ export async function uploadAssetFile(
   };
 }
 
-export async function deleteStoragePath(path: string): Promise<void> {
-  if (!path) return;
+export async function deleteStoragePath(path: string): Promise<boolean> {
+  if (!path) return true;
   const client = getSupabase();
-  if (!client) return;
+  if (!client) return false;
   const { error } = await client.storage.from(STORAGE_BUCKET).remove([path]);
   if (error) {
     console.warn("Storage cleanup failed for path:", path, error.message);
+    return false;
   }
+  return true;
 }
 
 export async function deleteStoragePaths(paths: string[]): Promise<{ deleted: string[]; failed: string[] }> {

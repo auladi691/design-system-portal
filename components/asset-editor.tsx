@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useDialogFocus } from "@/components/dialog-focus";
 import { ASSET_CATEGORIES, formatFileSize } from "@/lib/asset-categories";
 import { deleteStoragePath, uploadAssetFile } from "@/lib/asset-storage";
 import { validatePublish } from "@/lib/asset-validation";
@@ -29,6 +30,8 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLElement>(null);
+  useDialogFocus(editorRef, !confirmDelete);
 
   if (lastAssetId !== asset.id) {
     setLastAssetId(asset.id);
@@ -37,10 +40,10 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
   }
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !confirmDelete) close(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
+  }, [close, confirmDelete]);
 
   const update = (patch: Partial<Asset>) => {
     setItem((current) => ({ ...current, ...patch }));
@@ -67,8 +70,9 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
         pushToast("error", "We couldn't save the new file. The original file is kept.");
         return;
       }
-      if (previousPath && previousPath !== stored.path) {
-        await deleteStoragePath(previousPath);
+       if (previousPath && previousPath !== stored.path) {
+         const previousDeleted = await deleteStoragePath(previousPath);
+         if (!previousDeleted) pushToast("warning", "The replacement was saved, but the original file could not be removed.");
       }
       setItem(next);
       pushToast("success", "Replacement file saved.");
@@ -140,7 +144,7 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
 
   return (
     <div className="drawer-backdrop" onClick={close}>
-      <aside className="asset-editor" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Edit ${item.name}`}>
+       <aside ref={editorRef} className="asset-editor" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Edit ${item.name}`}>
         <header className="asset-editor-head">
           <div>
             <span className="eyebrow">{item.type.replace("-", " ")}</span>
