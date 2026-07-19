@@ -3,9 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 let cachedClient: SupabaseClient | null | undefined;
 
+const FALLBACK_URL = "https://nacuyrfyuimawjdvbsps.supabase.co";
+const FALLBACK_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hY3V5cmZ5dWltYXdqZHZic3BzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MTI1OTAsImV4cCI6MjA5OTk4ODU5MH0.1fvIo1LGFUvCQwcyIEQ4wiWNkt5tUCZONwybdV2-34c";
+
 export function getSupabaseConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_KEY;
   return { url, anonKey, configured: Boolean(url && anonKey) };
 }
 
