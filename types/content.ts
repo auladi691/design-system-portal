@@ -20,12 +20,25 @@ export type ContentPage = {
   sections: ContentSection[];
 };
 
+export type VisualBlockKind = "component-preview" | "token-swatch" | "typography-specimen" | "spacing-specimen" | "icon-construction" | "state-comparison" | "anatomy-diagram" | "do-dont-comparison" | "flow-diagram" | "asset-preview";
+
+export type VisualBlock = {
+  id: string;
+  kind: VisualBlockKind;
+  label: string;
+  componentSlug?: string;
+  tokenNames?: string[];
+  tokenPreview?: string;
+  items?: { label: string; description: string; tone?: "do" | "dont" | "neutral" }[];
+};
+
 export type ContentSection = {
   id: string;
   kind: "overview" | "preview" | "anatomy" | "variants" | "sizes" | "states" | "behavior" | "content" | "responsive" | "accessibility" | "do-dont" | "tokens" | "related" | "figma" | "changelog" | "rich-text";
   title: string;
   body?: string;
   items?: { title: string; description: string; tone?: "do" | "dont" | "neutral" }[];
+  visualBlocks?: VisualBlock[];
 };
 
 export type Asset = {

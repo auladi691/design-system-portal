@@ -8,6 +8,7 @@ import { collectionRouteForType, routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
 import { useDialogFocus } from "@/components/dialog-focus";
 import type { Asset, ContentPage } from "@/types/content";
+import { VisualBlock } from "@/components/visual-block";
 
 const nav = ["Design", "Foundations", "Components", "Patterns", "Resources"];
 const BRANDS = ["All", "Shared", "IM3", "Indosat", "Tri", "Partner"] as const;
@@ -323,6 +324,7 @@ function DocSection({ section, page }: { section: ContentPage["sections"][number
     <section id={section.id} className={`doc-section section-${section.kind}`}>
       <h2>{section.title}</h2>
       {section.body && <p>{section.body}</p>}
+      {section.visualBlocks?.map((block) => <VisualBlock key={block.id} block={block} />)}
       {section.kind === "preview" && (
         <div className="demo-stage">
           <PreviewGlyph page={page} />

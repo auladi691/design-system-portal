@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/supabase-client";
 import { routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
-import type { ContentPage, ContentSection, PageType, Release } from "@/types/content";
+import type { ContentPage, ContentSection, PageType, Release, VisualBlock, VisualBlockKind } from "@/types/content";
 
 const studioNav = [
   ["dashboard", "grid", "Dashboard"],
@@ -388,12 +388,53 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
 
 function SectionProperties({ section, page, setPage, onDelete }: { section: ContentSection; page: ContentPage; setPage: (p: ContentPage) => void; onDelete: () => void }) {
   const update = (patch: Partial<ContentSection>) => setPage({ ...page, sections: page.sections.map((s) => (s.id === section.id ? { ...s, ...patch } : s)) });
+  const addVisualBlock = (kind: VisualBlockKind) => {
+    const block: VisualBlock = { id: crypto.randomUUID(), kind, label: "" };
+    update({ visualBlocks: [...(section.visualBlocks ?? []), block] });
+  };
+  const updateVisualBlock = (id: string, patch: Partial<VisualBlock>) => {
+    update({ visualBlocks: section.visualBlocks?.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
+  };
+  const removeVisualBlock = (id: string) => {
+    update({ visualBlocks: section.visualBlocks?.filter((b) => b.id !== id) });
+  };
   return (
     <div className="properties-form">
       <span className="eyebrow">Section</span>
       <h2>{section.title}</h2>
       <label>Section title<input value={section.title} onChange={(e) => update({ title: e.target.value })} /></label>
       <label>Guidance<textarea rows={8} value={section.body || ""} onChange={(e) => update({ body: e.target.value })} placeholder="Write clear guidance for designers..." /></label>
+      <div className="property-group">
+        <span>Visual blocks</span>
+        {section.visualBlocks?.map((block) => (
+          <div key={block.id} className="visual-block-editor">
+            <select value={block.kind} onChange={(e) => updateVisualBlock(block.id, { kind: e.target.value as VisualBlockKind })}>
+              <option value="component-preview">Component preview</option>
+              <option value="token-swatch">Token swatch</option>
+              <option value="typography-specimen">Typography specimen</option>
+              <option value="spacing-specimen">Spacing specimen</option>
+              <option value="icon-construction">Icon construction</option>
+              <option value="state-comparison">State comparison</option>
+              <option value="anatomy-diagram">Anatomy diagram</option>
+              <option value="do-dont-comparison">Do/don’t comparison</option>
+              <option value="flow-diagram">Flow diagram</option>
+              <option value="asset-preview">Asset preview</option>
+            </select>
+            <input value={block.label} onChange={(e) => updateVisualBlock(block.id, { label: e.target.value })} placeholder="Label for this visual block" aria-label="Visual block label" />
+            <button className="danger-button small" onClick={() => removeVisualBlock(block.id)}><Icon name="trash" />Remove</button>
+          </div>
+        ))}
+        <div className="add-visual-block-group">
+          <span>Add visual block</span>
+          <div className="visual-block-type-grid">
+            {(["component-preview","token-swatch","typography-specimen","spacing-specimen","icon-construction","state-comparison","anatomy-diagram","do-dont-comparison","flow-diagram","asset-preview"] as VisualBlockKind[]).map((kind) => (
+              <button key={kind} className="visual-block-type-btn" onClick={() => addVisualBlock(kind)}>
+                {kind === "component-preview" ? "Preview" : kind === "token-swatch" ? "Swatch" : kind === "typography-specimen" ? "Type" : kind === "spacing-specimen" ? "Space" : kind === "icon-construction" ? "Icons" : kind === "state-comparison" ? "States" : kind === "anatomy-diagram" ? "Anatomy" : kind === "do-dont-comparison" ? "Do/Don't" : kind === "flow-diagram" ? "Flow" : "Asset"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="property-group">
         <span>Visibility</span>
         <button className="option-row"><span>Visible on portal</span><i className="toggle on" /></button>
