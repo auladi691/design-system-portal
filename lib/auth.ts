@@ -29,11 +29,19 @@ export function useAuth(): AuthState & {
       setState({ ready: true, session: null, user: null, isAdmin: false });
       return;
     }
-    const { data } = await client.auth.getSession();
-    const session = data.session;
-    const user = session?.user ?? null;
-    const admin = await checkAdmin(user);
-    setState({ ready: true, session, user, isAdmin: admin });
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (error) {
+        setState({ ready: true, session: null, user: null, isAdmin: false });
+        return;
+      }
+      const session = data.session;
+      const user = session?.user ?? null;
+      const admin = await checkAdmin(user);
+      setState({ ready: true, session, user, isAdmin: admin });
+    } catch {
+      setState({ ready: true, session: null, user: null, isAdmin: false });
+    }
   };
 
   useEffect(() => {
