@@ -124,10 +124,9 @@ export function Portal({ app }: { app: AppContext }) {
 
 function LoadingState({ assetLibrary }: { assetLibrary: boolean }) {
   return (
-    <div className="empty-state" aria-live="polite">
-      <Icon name={assetLibrary ? "image" : "file"} />
-      <h1>{assetLibrary ? "Loading assets" : "Loading guidance"}</h1>
-      <p>{assetLibrary ? "One moment while we load the latest published assets." : "One moment while we prepare the latest published content."}</p>
+    <div className="loading-state" aria-live="polite">
+      <span className="loading-indicator" aria-hidden="true" />
+      <p>{assetLibrary ? "Loading the latest published assets..." : "Loading the latest published guidance..."}</p>
     </div>
   );
 }

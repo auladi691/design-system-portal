@@ -103,3 +103,9 @@
   .editorial-card,.editorial-card.card-1,.editorial-card.card-2,.editorial-card.card-3,.editorial-card.card-4,.editorial-card.card-5{grid-column:1;min-height:420px;margin:0}
   .resource-grid{grid-template-columns:1fr;gap:14px}
 }
+
+/* Portal loading is a transient status, not an empty content state. */
+.loading-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:180px;padding:40px 20px;color:var(--text-2);font-size:14px}
+.loading-state p{margin:0}
+.loading-indicator{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:loadingPulse 1.2s ease-in-out infinite}
+@keyframes loadingPulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
