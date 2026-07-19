@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   env: {
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_SUPABASE_URL: "https://nacuyrfyuimawjdvbsps.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hY3V5cmZ5dWltYXdqZHZic3BzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MTI1OTAsImV4cCI6MjA5OTk4ODU5MH0.1fvIo1LGFUvCQwcyIEQ4wiWNkt5tUCZONwybdV2-34c",
   },
 };
 
