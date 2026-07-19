@@ -372,8 +372,9 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
           <SectionProperties section={section} page={page} setPage={setPage} onDelete={() => {
             const next = { ...page, sections: page.sections.filter((s) => s.id !== section.id) };
             setPage(next);
+            setSaved(false);
             setSelected(next.sections[0]?.id ?? null);
-          }} />
+          }} markDirty={() => setSaved(false)} />
         ) : (
           <PageProperties page={page} update={update} />
         )}
@@ -386,8 +387,8 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
   );
 }
 
-function SectionProperties({ section, page, setPage, onDelete }: { section: ContentSection; page: ContentPage; setPage: (p: ContentPage) => void; onDelete: () => void }) {
-  const update = (patch: Partial<ContentSection>) => setPage({ ...page, sections: page.sections.map((s) => (s.id === section.id ? { ...s, ...patch } : s)) });
+function SectionProperties({ section, page, setPage, onDelete, markDirty }: { section: ContentSection; page: ContentPage; setPage: (p: ContentPage) => void; onDelete: () => void; markDirty: () => void }) {
+  const update = (patch: Partial<ContentSection>) => { setPage({ ...page, sections: page.sections.map((s) => (s.id === section.id ? { ...s, ...patch } : s)) }); markDirty(); };
   const addVisualBlock = (kind: VisualBlockKind) => {
     const block: VisualBlock = { id: crypto.randomUUID(), kind, label: "" };
     update({ visualBlocks: [...(section.visualBlocks ?? []), block] });
