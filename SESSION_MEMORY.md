@@ -27,3 +27,12 @@
 4. Bulk upload with validation, progress, retry, and cancel is implemented (`lib/bulk-upload.ts`, `components/bulk-upload-dialog.tsx`).
 5. Complete exact Wise inventory after it is formally supplied/approved.
 6. Add real Figma links and production assets.
+
+## Portal Audit Completion
+
+- Public and admin stores are separated by route; public data is published-only.
+- Configured empty or error Supabase results no longer fall back silently to seed data.
+- Initial published content migration: `20260719000006_one_design_initial_content.sql`.
+- Explicit route mapping and server-side invalid-detail 404 handling are in place.
+- Portal states distinguish loading, database error, empty library, empty category, and search miss.
+- Verify page, asset, and release status counts with the queries in `README.md` or `DEPLOYMENT.md`.

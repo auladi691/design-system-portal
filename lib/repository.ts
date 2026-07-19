@@ -1,5 +1,5 @@
-import { getSupabase } from "@/lib/supabase-client";
-import { seedData } from "@/lib/seed-data";
+import { getSupabase, STORAGE_BUCKET } from "@/lib/supabase-client";
+import { emptySiteData, seedData } from "@/lib/seed-data";
 import type { Asset, ContentPage, Release, SiteData, SiteSettings } from "@/types/content";
 
 export const ASSET_TABLE = "assets";
@@ -8,6 +8,12 @@ export const RELEASES_TABLE = "releases";
 export const SETTINGS_TABLE = "site_settings";
 
 export type RealtimeListener = () => void;
+
+export type SiteFetchResult = {
+  data: SiteData;
+  error: string | null;
+  isPreview: boolean;
+};
 
 type AssetRow = {
   id: string;
@@ -69,7 +75,12 @@ type SettingsRow = {
 
 export type { SettingsRow };
 
-function mapAsset(row: AssetRow): Asset {
+async function mapAsset(row: AssetRow, client: NonNullable<ReturnType<typeof getSupabase>>): Promise<Asset> {
+  let fileUrl: string | null = null;
+  if (row.file_path) {
+    const signed = await client.storage.from(STORAGE_BUCKET).createSignedUrl(row.file_path, 3600);
+    fileUrl = signed.data?.signedUrl ?? null;
+  }
   return {
     id: row.id,
     type: row.type,
@@ -85,7 +96,7 @@ function mapAsset(row: AssetRow): Asset {
     updatedAt: formatDate(row.updated_at),
     altText: row.alt_text ?? "",
     filePath: row.file_path ?? null,
-    fileUrl: row.file_url ?? null,
+    fileUrl,
     mimeType: row.mime_type ?? null,
     fileSize: row.file_size ?? null,
     originalFileName: row.original_file_name ?? null,
@@ -131,9 +142,9 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export async function fetchPublishedSite(): Promise<SiteData | null> {
+export async function fetchPublishedSite(): Promise<SiteFetchResult> {
   const client = getSupabase();
-  if (!client) return seedData;
+  if (!client) return { data: seedData, error: null, isPreview: true };
   try {
     const [pagesRes, assetsRes, releasesRes, settingsRes] = await Promise.all([
       client.from(PAGES_TABLE).select("*").eq("status", "published").order("updated_at", { ascending: false }),
@@ -151,21 +162,20 @@ export async function fetchPublishedSite(): Promise<SiteData | null> {
       description: settingsRes.data?.content?.description ?? seedData.settings.description,
       visibility: settingsRes.data?.content?.visibility ?? seedData.settings.visibility,
     };
-    return {
+    return { data: {
       settings,
       pages: (pagesRes.data as PageRow[]).map(mapPage),
-      assets: (assetsRes.data as AssetRow[]).map(mapAsset),
+      assets: await Promise.all((assetsRes.data as AssetRow[]).map((row) => mapAsset(row, client))),
       releases: (releasesRes.data as ReleaseRow[]).map(mapRelease),
-    };
+    }, error: null, isPreview: false };
   } catch (error) {
-    console.warn("fetchPublishedSite failed, falling back to seed data:", error);
-    return seedData;
+    return { data: emptySiteData, error: friendlyErrorMessage(error), isPreview: false };
   }
 }
 
-export async function fetchAdminSite(): Promise<SiteData | null> {
+export async function fetchAdminSite(): Promise<SiteFetchResult> {
   const client = getSupabase();
-  if (!client) return seedData;
+  if (!client) return { data: seedData, error: null, isPreview: true };
   try {
     const [pagesRes, assetsRes, releasesRes, settingsRes] = await Promise.all([
       client.from(PAGES_TABLE).select("*").order("updated_at", { ascending: false }),
@@ -183,15 +193,14 @@ export async function fetchAdminSite(): Promise<SiteData | null> {
       description: settingsRes.data?.content?.description ?? seedData.settings.description,
       visibility: settingsRes.data?.content?.visibility ?? seedData.settings.visibility,
     };
-    return {
+    return { data: {
       settings,
       pages: (pagesRes.data as PageRow[]).map(mapPage),
-      assets: (assetsRes.data as AssetRow[]).map(mapAsset),
+      assets: await Promise.all((assetsRes.data as AssetRow[]).map((row) => mapAsset(row, client))),
       releases: (releasesRes.data as ReleaseRow[]).map(mapRelease),
-    };
+    }, error: null, isPreview: false };
   } catch (error) {
-    console.warn("fetchAdminSite failed, falling back to seed data:", error);
-    return seedData;
+    return { data: emptySiteData, error: friendlyErrorMessage(error), isPreview: false };
   }
 }
 
@@ -230,7 +239,7 @@ export function assetToInsert(asset: Asset): AssetInsert {
     version: asset.version,
     alt_text: asset.altText,
     file_path: asset.filePath,
-    file_url: asset.fileUrl,
+    file_url: null,
     mime_type: asset.mimeType,
     file_size: asset.fileSize,
     original_file_name: asset.originalFileName,

@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAdminSite, fetchPublishedSite, subscribeToAssets } from "@/lib/repository";
-import { seedData } from "@/lib/seed-data";
-import { getSupabase } from "@/lib/supabase-client";
+import { emptySiteData } from "@/lib/seed-data";
 import type { Asset, ContentPage, Release, SiteData, SiteSettings } from "@/types/content";
 
 export type StoreState = {
   data: SiteData;
   ready: boolean;
+  loading: boolean;
+  error: string | null;
   isPreview: boolean;
   reload: () => Promise<void>;
   setSettings: (settings: SiteSettings) => Promise<{ ok: boolean; error: string | null }>;
@@ -18,23 +19,36 @@ export type StoreState = {
   removeAsset: (assetId: string) => Promise<{ ok: boolean; error: string | null }>;
 };
 
-export function useSiteData(options: { admin?: boolean } = {}): StoreState {
+export function useSiteData(options: { admin?: boolean; enabled?: boolean } = {}): StoreState {
   const admin = options.admin ?? false;
-  const [data, setData] = useState<SiteData>(seedData);
-  const [ready, setReady] = useState(false);
+  const enabled = options.enabled ?? true;
+  const [data, setData] = useState<SiteData>(emptySiteData);
+  const [readyState, setReady] = useState(false);
+  const [loadingState, setLoading] = useState(enabled);
+  const [error, setError] = useState<string | null>(null);
   const [isPreview, setIsPreview] = useState(false);
   const skipNext = useRef(false);
+  const requestId = useRef(0);
 
   const reload = useCallback(async () => {
+    if (!enabled) return;
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setError(null);
     const result = admin ? await fetchAdminSite() : await fetchPublishedSite();
-    if (result) {
-      setData(result);
-      setIsPreview(!getSupabase());
-    }
+    if (currentRequest !== requestId.current) return;
+    setData(result.data);
+    setIsPreview(result.isPreview);
+    setError(result.error);
     setReady(true);
-  }, [admin]);
+    setLoading(false);
+  }, [admin, enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      requestId.current += 1;
+      return;
+    }
     let cancelled = false;
     void (async () => {
       await reload();
@@ -51,7 +65,7 @@ export function useSiteData(options: { admin?: boolean } = {}): StoreState {
       cancelled = true;
       unsubscribe();
     };
-  }, [reload]);
+  }, [enabled, reload]);
 
   const setSettings = useCallback(async (settings: SiteSettings) => {
     skipNext.current = true;
@@ -118,7 +132,9 @@ export function useSiteData(options: { admin?: boolean } = {}): StoreState {
 
   return {
     data,
-    ready,
+    ready: enabled && readyState,
+    loading: enabled && (loadingState || !readyState),
+    error,
     isPreview,
     reload,
     setSettings,

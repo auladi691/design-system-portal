@@ -10,7 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npm run lint && npm run build",
+    "test": "npm run lint && npm run build && node --test tests/route-audit.test.mjs",
     "validate:artifact": "next build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern build --ignore-pattern worker --ignore-pattern db --ignore-pattern examples",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",

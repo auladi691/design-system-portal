@@ -63,3 +63,22 @@ interface ContentRepository {
 ```
 
 Use Supabase Row Level Security. Anonymous users may read published records only. Administrator sessions may manage all records.
+
+## Public and admin data flow
+
+`DesignSystemApp` creates both data hooks unconditionally to preserve React
+Hook ordering, but enables only the store for the active route. Public routes
+use `useSiteData({ enabled: true })` and call `fetchPublishedSite()`.
+`/studio/*` uses `useSiteData({ admin: true, enabled: true })` and calls
+`fetchAdminSite()` after the administrator session is ready. The Portal never
+receives draft or archived records.
+
+The store exposes `ready`, `loading`, `error`, `isPreview`, and `reload`. Seed
+data is used only when Supabase is unavailable for local preview. A successful
+empty query remains empty, while a configured query error is shown as a
+friendly retry state.
+
+Page routes use an explicit mapping: `design` to `/design`, `foundation` to
+`/foundations`, `component` to `/components`, `pattern` to `/patterns`, and
+`resource` to `/resources`. Unknown published detail slugs return 404 instead
+of falling back to a collection page.

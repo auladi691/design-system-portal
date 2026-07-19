@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import { AssetsManager } from "@/components/assets-manager";
 import { useAuth } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/supabase-client";
+import { routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
 import type { ContentPage, ContentSection, PageType, Release } from "@/types/content";
 
@@ -22,12 +23,17 @@ const studioNav = [
 export function Studio({ app }: { app: AppContext }) {
   const auth = useAuth();
   const [timeoutReached, setTimeoutReached] = useState(false);
+  const { navigate, reload } = app;
 
   useEffect(() => {
     if (auth.ready && auth.isAdmin && app.path === "/studio/login") {
-      app.navigate("/studio/dashboard");
+      navigate("/studio/dashboard");
     }
-  }, [auth.ready, auth.isAdmin, app, app.path]);
+  }, [auth.ready, auth.isAdmin, app.path, navigate]);
+
+  useEffect(() => {
+    if (auth.ready && auth.isAdmin) void reload();
+  }, [auth.ready, auth.isAdmin, reload]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setTimeoutReached(true), 5000);
@@ -42,6 +48,10 @@ export function Studio({ app }: { app: AppContext }) {
     return <Login auth={auth} app={app} />;
   }
 
+  if (app.error) {
+    return <div className="studio-loading" role="alert">We couldn&apos;t load Studio data. <button onClick={() => void reload()}>Try again</button></div>;
+  }
+
   if (app.path === "/studio/login") {
     return null;
   }
@@ -50,6 +60,7 @@ export function Studio({ app }: { app: AppContext }) {
   const section = parts[1] || "dashboard";
   return (
     <div className="studio-shell">
+      {app.isPreview && <div className="studio-preview-banner" role="status">Preview data only. Connect Supabase to manage production content.</div>}
       <aside className="studio-sidebar">
         <button className="brand studio-brand" onClick={() => app.navigate("/studio/dashboard")}>
           <span className="brand-mark" aria-hidden="true">O</span>
@@ -309,7 +320,7 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
           {saved ? "Saved" : "Unsaved changes"}
         </div>
         <div>
-          <button className="secondary-button" onClick={() => window.open(`/${page.type}s/${page.slug}`, "_blank")}>Preview</button>
+          <button className="secondary-button" onClick={() => window.open(routeForPage(page), "_blank")}>Preview</button>
           <button className="primary-button" onClick={() => save(true)}>Publish</button>
         </div>
       </header>
@@ -410,13 +421,13 @@ function PageProperties({ page, update }: { page: ContentPage; update: (p: Parti
 }
 
 function addSection(page: ContentPage, setPage: (p: ContentPage) => void, setSelected: (id: string) => void) {
-  const id = `section-${Date.now()}`;
+  const id = `section-${crypto.randomUUID()}`;
   setPage({ ...page, sections: [...page.sections, { id, kind: "rich-text", title: "New section", body: "Add guidance that is easy for designers to understand." }] });
   setSelected(id);
 }
 
 function makeNewPageTemplate(): ContentPage {
-  const id = `page-${Date.now()}`;
+  const id = crypto.randomUUID();
   return {
     id,
     type: "component" as PageType,
@@ -443,7 +454,7 @@ function addRecommended(page: ContentPage, setPage: (p: ContentPage) => void, se
 }
 
 async function duplicatePage(app: AppContext, p: ContentPage) {
-  const copy: ContentPage = { ...structuredClone(p), id: `${p.id}-copy-${Date.now()}`, title: `${p.title} copy`, slug: `${p.slug}-copy`, status: "draft" as const };
+  const copy: ContentPage = { ...structuredClone(p), id: crypto.randomUUID(), title: `${p.title} copy`, slug: `${p.slug}-copy-${crypto.randomUUID().slice(0, 8)}`, status: "draft" as const };
   try {
     await app.upsertPage(copy);
     pushToast("success", "Page duplicated as draft.");
@@ -518,7 +529,7 @@ function Tokens() {
 function ReleasesManager({ app }: { app: AppContext }) {
   const create = async () => {
     const r: Release = {
-      id: `r-${Date.now()}`,
+       id: crypto.randomUUID(),
       version: "1.1",
       title: "Untitled release",
       summary: "Describe what designers should know about this release.",

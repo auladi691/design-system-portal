@@ -7,8 +7,10 @@ import { Studio } from "@/components/studio";
 import { ToastRegion } from "@/components/toast-region";
 
 export function DesignSystemApp({ initialPath }: { initialPath: string }) {
-  const store = useSiteData({ admin: true });
   const [path, setPath] = useState(initialPath || "/");
+  const isStudio = path.startsWith("/studio");
+  const portalStore = useSiteData({ enabled: !isStudio });
+  const studioStore = useSiteData({ admin: true, enabled: isStudio });
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);
@@ -24,6 +26,7 @@ export function DesignSystemApp({ initialPath }: { initialPath: string }) {
     window.scrollTo({ top: 0, behavior: prefersReduced ? "auto" : "smooth" });
   };
 
+  const store = isStudio ? studioStore : portalStore;
   const value = useMemo(() => ({ ...store, path, navigate }), [store, path]);
   return (
     <>

@@ -44,3 +44,38 @@ values ('your-auth-user-id');
 ```
 
 6. Set the environment variables listed in `.env.example`.
+
+## Published Content
+
+The Portal reads only published pages, assets, and releases from Supabase. Run
+`supabase/migrations/20260719000006_one_design_initial_content.sql` after the
+schema and earlier migrations to add the initial published guidance. It uses
+valid UUIDs and preserves existing pages when run again.
+
+Public and Studio data flows are separate. The Portal calls
+`fetchPublishedSite()`; One Design Studio calls `fetchAdminSite()` after
+administrator authentication. When Supabase is not configured locally, Studio
+shows clearly marked preview data. A configured but empty or failing database
+is never replaced by seed data.
+
+Verify published content in Supabase with:
+
+```sql
+select type, status, count(*) as total
+from public.pages
+group by type, status
+order by type, status;
+
+select status, count(*) as total
+from public.assets
+group by status
+order by status;
+
+select status, count(*) as total
+from public.releases
+group by status
+order by status;
+```
+
+Run `npm test` to execute lint, the production build, and the route/data
+contract audit.

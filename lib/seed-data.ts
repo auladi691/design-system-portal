@@ -101,6 +101,13 @@ export const SEED_SITE_SETTINGS = {
   visibility: "unlisted" as const,
 };
 
+export const emptySiteData: SiteData = {
+  settings: SEED_SITE_SETTINGS,
+  pages: [],
+  assets: [],
+  releases: [],
+};
+
 export const seedData: SiteData = {
   settings: SEED_SITE_SETTINGS,
   pages,

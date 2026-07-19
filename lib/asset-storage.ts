@@ -45,10 +45,16 @@ export async function uploadAssetFile(
   if (error) {
     throw new Error("We could not upload this file. Try again in a moment.");
   }
-  const { data: publicUrlData } = client.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  const { data: signedUrlData, error: signedUrlError } = await client.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(path, 3600);
+  if (signedUrlError || !signedUrlData.signedUrl) {
+    await deleteStoragePath(path);
+    throw new Error("We could not prepare this file for preview. Try again in a moment.");
+  }
   return {
     path,
-    url: publicUrlData.publicUrl,
+    url: signedUrlData.signedUrl,
     mimeType: file.type || null,
     size: file.size,
     originalFileName: file.name,

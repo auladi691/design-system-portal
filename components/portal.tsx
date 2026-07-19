@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppContext } from "@/components/design-system-app";
 import { Icon } from "@/components/icons";
 import { ASSET_CATEGORIES, ASSET_CATEGORY_MAP, categoryLabel, formatFileSize } from "@/lib/asset-categories";
+import { collectionRouteForType, routeForPage } from "@/lib/routes";
 import type { Asset, ContentPage } from "@/types/content";
 
 const nav = ["Design", "Foundations", "Components", "Patterns", "Resources"];
@@ -34,15 +35,24 @@ export function Portal({ app }: { app: AppContext }) {
   const page = app.data.pages.find((p) => p.slug === slug && p.status === "published");
 
   let content: React.ReactNode;
-  if (!root) content = <Home app={app} />;
-  else if (root === "foundations" || root === "components")
-    content = page ? <DocPage page={page} app={app} /> : <Collection type={root === "foundations" ? "foundation" : "component"} app={app} />;
-  else if (root === "resources" && parts[1] === "assets") content = <AssetExplorer app={app} type={parts[2]} />;
-  else if (root === "resources") content = <Resources app={app} />;
-  else if (root === "changelog") content = <Changelog app={app} />;
-  else if (root === "search") content = <SearchPage app={app} />;
-  else if (root === "design" || root === "patterns") content = <EditorialIndex kind={root} app={app} />;
-  else content = <NotFound app={app} />;
+  if (app.loading) content = <LoadingState assetLibrary={root === "resources" && parts[1] === "assets"} />;
+  else if (app.error) content = <LoadError app={app} assetLibrary={root === "resources" && parts[1] === "assets"} />;
+  else if (!root) content = <Home app={app} />;
+  else if (root === "foundations" || root === "components") {
+    const type = root === "foundations" ? "foundation" : "component";
+    content = slug ? (page?.type === type ? <DocPage page={page} app={app} /> : <NotFound app={app} />) : <Collection type={type} app={app} />;
+  } else if (root === "resources" && parts[1] === "assets") {
+    content = parts.length > 3 || (parts[2] && !ASSET_CATEGORY_MAP[parts[2] as Asset["type"]])
+      ? <NotFound app={app} />
+      : <AssetExplorer app={app} type={parts[2]} />;
+  } else if (root === "resources") {
+    content = slug && parts.length === 2 ? (page?.type === "resource" ? <DocPage page={page} app={app} /> : <NotFound app={app} />) : slug ? <NotFound app={app} /> : <Resources app={app} />;
+  } else if (root === "changelog" && parts.length === 1) content = <Changelog app={app} />;
+  else if (root === "search" && parts.length === 1) content = <SearchPage app={app} />;
+  else if (root === "design" || root === "patterns") {
+    const type = root === "design" ? "design" : "pattern";
+    content = slug && parts.length === 2 ? (page?.type === type ? <DocPage page={page} app={app} /> : <NotFound app={app} />) : slug ? <NotFound app={app} /> : <EditorialIndex kind={root} app={app} />;
+  } else content = <NotFound app={app} />;
 
   return (
     <div className="site-shell">
@@ -100,6 +110,27 @@ export function Portal({ app }: { app: AppContext }) {
   );
 }
 
+function LoadingState({ assetLibrary }: { assetLibrary: boolean }) {
+  return (
+    <div className="empty-state" aria-live="polite">
+      <Icon name={assetLibrary ? "image" : "file"} />
+      <h1>{assetLibrary ? "Loading assets" : "Loading guidance"}</h1>
+      <p>{assetLibrary ? "One moment while we load the latest published assets." : "One moment while we prepare the latest published content."}</p>
+    </div>
+  );
+}
+
+function LoadError({ app, assetLibrary }: { app: AppContext; assetLibrary: boolean }) {
+  return (
+    <div className="empty-state" role="alert">
+      <Icon name="warning" />
+      <h1>{assetLibrary ? "We couldn’t load the Asset Library" : "We couldn’t load the latest guidance"}</h1>
+      <p>{assetLibrary ? "Refresh the page or try again in a moment." : "Refresh the page or try again in a moment."}</p>
+      <button className="primary-button" onClick={() => void app.reload()}>Try again</button>
+    </div>
+  );
+}
+
 function Home({ app }: { app: AppContext }) {
   const featured = app.data.pages.filter((p) => p.featured && p.status === "published");
   return (
@@ -135,8 +166,8 @@ function Home({ app }: { app: AppContext }) {
           <h2>Start with the basics,<br />keep things consistent.</h2>
         </div>
         <div className="editorial-grid">
-          {featured.map((p, i) => (
-            <button className={`editorial-card card-${i + 1}`} key={p.id} onClick={() => app.navigate(`/${p.type}s/${p.slug}`)}>
+           {featured.map((p, i) => (
+             <button className={`editorial-card card-${i + 1}`} key={p.id} onClick={() => app.navigate(routeForPage(p))}>
               <span className="card-index">0{i + 1}</span>
               <div className="card-visual"><PreviewGlyph page={p} /></div>
               <div><h3>{p.title}</h3><p>{p.summary}</p><Icon name="arrow" /></div>
@@ -159,12 +190,14 @@ function Home({ app }: { app: AppContext }) {
             ))}
         </div>
       </section>
-      <section className="latest-release">
-        <span className="eyebrow">Latest release</span>
-        <h2>{app.data.releases[0]?.title}</h2>
-        <p>{app.data.releases[0]?.summary}</p>
-        <button className="text-button" onClick={() => app.navigate("/changelog")}>See what changed <Icon name="arrow" /></button>
-      </section>
+       {app.data.releases[0] && (
+         <section className="latest-release">
+           <span className="eyebrow">Latest release</span>
+           <h2>{app.data.releases[0].title}</h2>
+           <p>{app.data.releases[0].summary}</p>
+           <button className="text-button" onClick={() => app.navigate("/changelog")}>See what changed <Icon name="arrow" /></button>
+         </section>
+       )}
     </>
   );
 }
@@ -197,7 +230,7 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
             <h2>{group}</h2>
             <div className="collection-grid">
               {list.map((p) => (
-                <button className="collection-card" key={p.id} onClick={() => app.navigate(`/${type}s/${p.slug}`)}>
+                 <button className="collection-card" key={p.id} onClick={() => app.navigate(routeForPage(p))}>
                   <div className="collection-preview"><PreviewGlyph page={p} /></div>
                   <div><h3>{p.title}</h3><p>{p.summary}</p><span className="card-link">Read guidance <Icon name="arrow" /></span></div>
                 </button>
@@ -206,13 +239,20 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
           </section>
         ) : null;
       })}
-      {!pages.length && (
+       {!pages.length && (
         <div className="empty-state">
-          <Icon name="search" />
-          <h2>No guidance yet</h2>
-          <p>Try a different word or clear the filters.</p>
-        </div>
-      )}
+           <Icon name="search" />
+           <h2>No published guidance yet</h2>
+           <p>Published foundations and components will appear here.</p>
+         </div>
+       )}
+       {pages.length > 0 && !groups.some((group) => pages.some((p) => p.category === group && `${p.title} ${p.summary}`.toLowerCase().includes(lower))) && (
+         <div className="empty-state">
+           <Icon name="search" />
+           <h2>No matching guidance</h2>
+           <p>Try a different word or clear the search.</p>
+         </div>
+       )}
     </div>
   );
 }
@@ -240,10 +280,10 @@ function DocPage({ page, app }: { page: ContentPage; app: AppContext }) {
   return (
     <div className="doc-layout">
       <aside className="doc-sidebar" aria-label="Collection navigation">
-        <button onClick={() => app.navigate(`/${page.type}s`)}>← All {page.type}s</button>
+         <button onClick={() => app.navigate(collectionRouteForType(page.type))}>← All {page.type === "foundation" ? "foundations" : page.type === "component" ? "components" : `${page.type}s`}</button>
         <span>{page.category}</span>
-        {app.data.pages.filter((p) => p.type === page.type && p.status === "published").map((p) => (
-          <button key={p.id} className={p.id === page.id ? "active" : ""} onClick={() => app.navigate(`/${p.type}s/${p.slug}`)}>{p.title}</button>
+         {app.data.pages.filter((p) => p.type === page.type && p.status === "published").map((p) => (
+           <button key={p.id} className={p.id === page.id ? "active" : ""} onClick={() => app.navigate(routeForPage(p))}>{p.title}</button>
         ))}
       </aside>
       <article className="doc-content">
@@ -333,10 +373,11 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const isVisual = config?.visual ?? true;
 
   const lower = query.toLowerCase();
-  const assets = app.data.assets.filter((a) =>
-    a.status === "published" &&
-    (active === "all" || a.type === active) &&
-    (brand === "All" || a.brand === brand) &&
+  const publishedAssets = app.data.assets.filter((a) => a.status === "published");
+  const categoryAssets = active === "all" ? publishedAssets : publishedAssets.filter((a) => a.type === active);
+  const assets = categoryAssets.filter((a) =>
+     a.status === "published" &&
+     (brand === "All" || a.brand === brand) &&
     `${a.name} ${a.category} ${a.keywords.join(" ")}`.toLowerCase().includes(lower),
   );
 
@@ -368,13 +409,13 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
         )}
       </div>
       <div className="asset-count">{assets.length} assets</div>
-      {!app.ready ? (
-        <div className="empty-state"><Icon name="image" /><h2>Loading assets</h2><p>One moment while we load the library.</p></div>
-      ) : assets.length === 0 ? (
+      {assets.length === 0 ? (
         <div className="empty-state">
-          <Icon name="search" />
-          <h2>{config ? config.emptyMessage : "No assets found"}</h2>
-          <p>Try a different word or clear the filters.</p>
+           <Icon name="search" />
+           <h2>{categoryAssets.length === 0 ? (config ? "No assets in this category yet" : "No published assets yet") : "No matching assets"}</h2>
+           <p>{categoryAssets.length === 0
+             ? (config ? "Published assets for this category will appear here." : "Published assets will appear here when they are ready to use.")
+             : "Try a different word or clear the filters."}</p>
         </div>
       ) : (
         <div className={`asset-grid ${active !== "icon" && isVisual ? "visual-assets" : ""}`}>
@@ -448,25 +489,39 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
 }
 
 function Resources({ app }: { app: AppContext }) {
-  const cards: [string, string, string][] = [
-    ["Asset Library", "Icons, illustrations, logos, and files ready to use.", "/resources/assets"],
-    ["Figma Library", "Open approved components and foundations.", "#"],
-    ["Templates", "Start new design work from a consistent structure.", "/resources/assets/template"],
-  ];
+  const resourcePages = app.data.pages.filter((p) => p.type === "resource" && p.status === "published");
   return (
     <div className="simple-index">
       <span className="eyebrow">Resources</span>
       <h1>Everything you need to start designing.</h1>
-      <div className="resource-grid">
-        {cards.map(([t, d, u]) => (
-          <button key={t} onClick={() => u !== "#" && app.navigate(u)}>
-            <Icon name="layers" />
-            <h2>{t}</h2>
-            <p>{d}</p>
-            <span>Explore <Icon name="arrow" /></span>
-          </button>
-        ))}
-      </div>
+       <div className="resource-grid">
+         <button onClick={() => app.navigate("/resources/assets")}>
+           <Icon name="image" />
+           <h2>Asset Library</h2>
+           <p>Icons, illustrations, logos, and files ready to use.</p>
+           <span>Explore <Icon name="arrow" /></span>
+         </button>
+         {resourcePages.map((page) => {
+           const isFigma = page.slug === "figma-library";
+           const isAssetLink = page.slug === "templates" || page.slug === "downloads";
+           const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
+           return isFigma && page.figmaUrl ? (
+             <a className="resource-card" key={page.id} href={page.figmaUrl} target="_blank" rel="noreferrer">
+               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p><span>Open in Figma <Icon name="external" /></span>
+             </a>
+           ) : isFigma ? (
+             <div className="resource-card unavailable" key={page.id}>
+               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p><span>Coming soon</span>
+             </div>
+           ) : (
+             <button key={page.id} onClick={() => app.navigate(href)}>
+               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p>
+               <span>{isFigma ? "Coming soon" : "Explore"} {!isFigma && <Icon name="arrow" />}</span>
+             </button>
+           );
+         })}
+         {!resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>No published resources yet</h2><p>Published resources will appear here.</p></div>}
+       </div>
     </div>
   );
 }
@@ -493,7 +548,7 @@ function Changelog({ app }: { app: AppContext }) {
           <div className="empty-state">
             <Icon name="file" />
             <h2>No releases yet</h2>
-            <p>Releases will appear here once they are published.</p>
+             <p>Published releases will appear here.</p>
           </div>
         )}
       </div>
@@ -501,8 +556,10 @@ function Changelog({ app }: { app: AppContext }) {
   );
 }
 
-function EditorialIndex({ kind }: { kind: string; app: AppContext }) {
+function EditorialIndex({ kind, app }: { kind: string; app: AppContext }) {
   const isDesign = kind === "design";
+  const type = isDesign ? "design" : "pattern";
+  const pages = app.data.pages.filter((p) => p.type === type && p.status === "published");
   return (
     <div className="simple-index">
       <span className="eyebrow">{isDesign ? "Design" : "Patterns"}</span>
@@ -510,19 +567,17 @@ function EditorialIndex({ kind }: { kind: string; app: AppContext }) {
       <p className="lead">{isDesign
         ? "Principles, getting started, and guidance for contributing to the design system."
         : "Build familiar experiences with patterns that are learned and approved."}</p>
-      <div className="resource-grid">
-        {(isDesign
-          ? ["Introduction", "Principles", "Getting started", "Contribution", "Governance"]
-          : ["Forms", "Navigation", "Search", "Feedback", "Empty states", "Responsive layout"]
-        ).map((x, i) => (
-          <button key={x}>
-            <span className="card-index">0{i + 1}</span>
-            <h2>{x}</h2>
-            <p>Learn the purpose, principles, and how to use this guidance.</p>
-            <span>Read guidance <Icon name="arrow" /></span>
-          </button>
-        ))}
-      </div>
+       <div className="resource-grid">
+         {pages.map((page, i) => (
+           <button key={page.id} onClick={() => app.navigate(routeForPage(page))}>
+             <span className="card-index">{String(i + 1).padStart(2, "0")}</span>
+             <h2>{page.title}</h2>
+             <p>{page.summary}</p>
+             <span>Read guidance <Icon name="arrow" /></span>
+           </button>
+         ))}
+         {!pages.length && <div className="empty-state"><Icon name="file" /><h2>No published guidance yet</h2><p>Published {isDesign ? "design" : "pattern"} guidance will appear here.</p></div>}
+       </div>
     </div>
   );
 }
@@ -552,8 +607,8 @@ function SearchResults({ app, onChoose }: { app: AppContext; onChoose?: () => vo
       </label>
       {q && (
         <div>
-          {results.map((p) => (
-            <button key={p.id} onClick={() => { app.navigate(`/${p.type}s/${p.slug}`); onChoose?.(); }}>
+           {results.map((p) => (
+             <button key={p.id} onClick={() => { app.navigate(routeForPage(p)); onChoose?.(); }}>
               <span>{p.type}</span>
               <strong>{p.title}</strong>
               <p>{p.summary}</p>

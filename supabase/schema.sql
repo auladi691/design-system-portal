@@ -115,15 +115,30 @@ create policy "Administrators manage settings" on public.site_settings for all u
 create policy "Administrators read administrators" on public.administrators for select using (public.is_administrator());
 create policy "Administrators manage administrators" on public.administrators for all using (public.is_administrator()) with check (public.is_administrator());
 
-insert into storage.buckets (id, name, public) values ('design-system-assets','design-system-assets',true)
+insert into storage.buckets (id, name, public) values ('design-system-assets','design-system-assets',false)
 on conflict (id) do nothing;
+
+update storage.buckets
+set public = false
+where id = 'design-system-assets';
 
 drop policy if exists "Published assets can be viewed" on storage.objects;
 drop policy if exists "Administrators upload assets" on storage.objects;
 drop policy if exists "Administrators update assets" on storage.objects;
 drop policy if exists "Administrators delete assets" on storage.objects;
 
-create policy "Published assets can be viewed" on storage.objects for select using (bucket_id = 'design-system-assets');
+create policy "Published assets can be viewed" on storage.objects for select using (
+  bucket_id = 'design-system-assets'
+  and (
+    public.is_administrator()
+    or exists (
+      select 1
+      from public.assets
+      where public.assets.file_path = storage.objects.name
+        and public.assets.status = 'published'
+    )
+  )
+);
 create policy "Administrators upload assets" on storage.objects for insert with check (bucket_id = 'design-system-assets' and public.is_administrator());
 create policy "Administrators update assets" on storage.objects for update using (bucket_id = 'design-system-assets' and public.is_administrator());
 create policy "Administrators delete assets" on storage.objects for delete using (bucket_id = 'design-system-assets' and public.is_administrator());

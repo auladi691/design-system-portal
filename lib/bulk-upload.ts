@@ -7,6 +7,7 @@ import type { Asset, AssetType } from "@/types/content";
 export type BulkUploadItem = {
   id: string;
   file: File;
+  type: AssetType;
   name: string;
   slug: string;
   category: string;
@@ -50,11 +51,11 @@ async function runWorker(
     onItemChange(item.id, { uploading: true, error: null, progress: 5 });
     try {
       onItemChange(item.id, { progress: 40 });
-      const stored = await uploadAssetFile(item.file.type as AssetType, item.file);
+      const stored = await uploadAssetFile(item.type, item.file);
       onItemChange(item.id, { progress: 85 });
       const asset: Asset = {
         id: item.id,
-        type: item.file.type as AssetType,
+         type: item.type,
         name: item.name,
         slug: item.slug,
         category: item.category,
@@ -62,7 +63,7 @@ async function runWorker(
         status: publishAfterUpload ? "published" : "draft",
         description: item.description,
         keywords: item.keywords,
-        glyph: glyphFor(item.file.type as AssetType, item.name),
+        glyph: glyphFor(item.type, item.name),
         version: item.version,
         updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
         altText: item.altText,
@@ -101,8 +102,9 @@ export function makeItemFromFile(file: File, type: AssetType, existingSlugs: str
   const slug = uniqueSlug(slugify(name), existingSlugs);
   const config = ASSET_CATEGORY_MAP[type];
   return {
-    id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: crypto.randomUUID(),
     file: Object.assign(file, { type: file.type || "" }) as File,
+    type,
     name,
     slug,
     category: config ? defaultCategory(type) : "General",

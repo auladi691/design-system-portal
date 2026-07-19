@@ -76,3 +76,37 @@
 - Release editor is read-only in this iteration (a toast indicates where editing will open).
 - Token manager shows the imported summary; full token editing arrives with the Wise inventory.
 - Some dashboard numbers are illustrative until production analytics are connected.
+
+## Route Audit
+
+The automated contract in `tests/route-audit.test.mjs` covers:
+
+- `/`, `/design`, `/foundations`, `/components`, `/patterns`, `/resources`
+- `/resources/assets` and `icon`, `icon-illustration`, `illustration`, `logo`, `brand-asset`, `template`, `download`
+- `/changelog` and `/search`
+- Foundation, component, design, pattern, and resource detail routes
+- Invalid root, invalid detail slug, and invalid asset category 404 behavior
+
+Run `npm test` to run lint, the production build, and this audit. For a local
+HTTP smoke test, start the production server with `npm run start` and request
+every route above plus `/components/not-a-component`; the latter must return
+404.
+
+## Supabase Verification Queries
+
+```sql
+select type, status, count(*) as total
+from public.pages
+group by type, status
+order by type, status;
+
+select status, count(*) as total
+from public.assets
+group by status
+order by status;
+
+select status, count(*) as total
+from public.releases
+group by status
+order by status;
+```

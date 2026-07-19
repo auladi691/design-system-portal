@@ -57,7 +57,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   };
 
   const createBlank = async (cat: AssetType) => {
-    const id = `asset-${Date.now()}`;
+    const id = crypto.randomUUID();
     const name = `New ${categoryLabel(cat).slice(0, -1)}`;
     const slug = uniqueSlug(slugify(name), existingSlugs);
     const asset: Asset = {
