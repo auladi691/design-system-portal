@@ -21,6 +21,7 @@ const studioNav = [
 
 export function Studio({ app }: { app: AppContext }) {
   const auth = useAuth();
+  const [timeoutReached, setTimeoutReached] = useState(false);
 
   useEffect(() => {
     if (auth.ready && auth.isAdmin && app.path === "/studio/login") {
@@ -28,7 +29,12 @@ export function Studio({ app }: { app: AppContext }) {
     }
   }, [auth.ready, auth.isAdmin, app, app.path]);
 
-  if (!auth.ready) {
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTimeoutReached(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!auth.ready && !timeoutReached) {
     return <div className="studio-loading" aria-live="polite">Loading One Design Studio...</div>;
   }
 
