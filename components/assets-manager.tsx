@@ -82,7 +82,8 @@ export function AssetsManager({ app }: AssetsManagerProps) {
       createdAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     };
     try {
-      await app.upsertAsset(asset);
+      const result = await app.upsertAsset(asset);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't create this asset.");
       setSelected(asset);
       pushToast("info", "Draft asset created. Upload a file and add details before publishing.");
     } catch (error) {
@@ -94,7 +95,8 @@ export function AssetsManager({ app }: AssetsManagerProps) {
     setBusy(true);
     try {
       if (asset.filePath) await deleteStoragePath(asset.filePath);
-      await app.removeAsset(asset.id);
+      const result = await app.removeAsset(asset.id);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't delete this asset.");
       pushToast("success", "Asset deleted.");
       if (selected?.id === asset.id) setSelected(null);
       setConfirmSingleDelete(null);
@@ -113,8 +115,9 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         const target = app.data.assets.find((a) => a.id === id);
         if (!target) continue;
         try {
-          await app.upsertAsset({ ...target, status: "published", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
-          ok += 1;
+          const result = await app.upsertAsset({ ...target, status: "published", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+          if (result.ok) ok += 1;
+          else fail += 1;
         } catch {
           fail += 1;
         }
@@ -135,8 +138,9 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         const target = app.data.assets.find((a) => a.id === id);
         if (!target) continue;
         try {
-          await app.upsertAsset({ ...target, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
-          ok += 1;
+          const result = await app.upsertAsset({ ...target, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+          if (result.ok) ok += 1;
+          else fail += 1;
         } catch {
           fail += 1;
         }
@@ -157,17 +161,27 @@ export function AssetsManager({ app }: AssetsManagerProps) {
     const failed: string[] = [];
     try {
       const storageResult = await deleteStoragePaths(paths);
+      const failedStoragePaths = new Set(storageResult.failed);
       for (const target of targets) {
+        if (target.filePath && failedStoragePaths.has(target.filePath)) {
+          failed.push(target.name);
+          continue;
+        }
         const result = await app.removeAsset(target.id);
-        void result;
-        ok += 1;
+        if (result.ok) ok += 1;
+        else failed.push(target.name);
       }
-      if (storageResult.failed.length) {
-        pushToast("warning", `${ok} asset${ok === 1 ? "" : "s"} removed. ${storageResult.failed.length} file${storageResult.failed.length === 1 ? "" : "s"} could not be deleted from storage.`);
-      } else {
+      const databaseFailures = failed.length;
+      const storageFailures = storageResult.failed.length;
+      if (!databaseFailures && !storageFailures) {
         pushToast("success", `${ok} asset${ok === 1 ? "" : "s"} deleted.`);
+      } else {
+        const details = [
+          databaseFailures ? `${databaseFailures} asset${databaseFailures === 1 ? "" : "s"}` : "",
+          storageFailures ? `${storageFailures} storage file${storageFailures === 1 ? "" : "s"}` : "",
+        ].filter(Boolean).join(" and ");
+        pushToast("warning", `${ok} asset${ok === 1 ? "" : "s"} removed. ${details} could not be deleted. Try again.`);
       }
-      if (failed.length) pushToast("warning", `${failed.length} asset${failed.length === 1 ? "" : "s"} could not be deleted. Try again.`);
       clearSelection();
       setConfirmBulkDelete(false);
     } catch (error) {

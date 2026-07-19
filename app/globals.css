@@ -42,3 +42,28 @@
 
 @media(max-width:900px){.bulk-queue-item{grid-template-columns:1fr}.bulk-shared-grid{grid-template-columns:1fr}.bulk-category-grid{grid-template-columns:repeat(2,1fr)}.asset-manager-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.bulk-category-grid{grid-template-columns:1fr}.asset-manager-grid{grid-template-columns:1fr}.bulk-footer{flex-direction:column;align-items:stretch}.bulk-footer-actions{justify-content:stretch}.bulk-footer-actions button{flex:1}}
+
+/* Shared card variants */
+.resource-card,.guidance-card,.content-card{position:relative;min-height:330px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:26px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;color:inherit;text-decoration:none;cursor:pointer}
+.resource-card:hover,.guidance-card:hover,.content-card:hover{transform:translateY(-3px);border-color:var(--border-strong)}
+.resource-card:focus-visible,.guidance-card:focus-visible,.content-card:focus-visible{outline-offset:4px}
+.resource-card:disabled,.resource-card.unavailable{cursor:default;opacity:.68}
+.resource-card:disabled:hover,.resource-card.unavailable:hover{transform:none;border-color:var(--border)}
+.resource-card-visual{width:64px;height:64px;display:grid;place-items:center;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);flex:0 0 auto}
+.resource-card-visual svg{width:28px;height:28px}
+.resource-card h2,.guidance-card h2{font-size:28px;line-height:1.05;letter-spacing:-.035em;margin:auto 0 9px}
+.resource-card p,.guidance-card p{color:var(--text-2);margin:0;max-width:34rem}
+.resource-card-action,.guidance-card-action{display:flex;align-items:center;gap:7px;margin-top:22px;font-size:13px;font-weight:700}
+.resource-card-action svg,.guidance-card-action svg{width:16px}
+.resource-card:hover .resource-card-action svg,.guidance-card:hover .guidance-card-action svg{transform:translateX(4px)}
+.guidance-card{min-height:330px}
+.guidance-card .card-index{margin-bottom:auto}
+.resource-grid>button.resource-card,.resource-grid>a.resource-card{appearance:none}
+.resource-grid>button:not(.resource-card):not(.guidance-card){min-height:330px}
+.release-editor{margin-bottom:24px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px}
+.release-editor header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.release-editor header h2{margin:4px 0 0;font-size:22px}
+.release-editor-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.release-editor .properties-form{padding:0}
+.settings-layout>aside button:disabled{cursor:not-allowed;opacity:.55}
+.resource-card:disabled,.guidance-card:disabled,.content-card:disabled,.primary-button:disabled,.secondary-button:disabled,.danger-button:disabled,.text-button:disabled{cursor:not-allowed;opacity:.55;transform:none}

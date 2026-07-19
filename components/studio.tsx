@@ -177,19 +177,19 @@ function Dashboard({ app }: { app: AppContext }) {
         action={<button className="primary-button" onClick={() => app.navigate("/studio/content/new")}><Icon name="plus" />New documentation</button>}
       />
       <section className="dashboard-grid">
-        <article className="continue-card">
+        <article className="content-card continue-card">
           <span className="eyebrow">Continue working</span>
           <div className="big-number">{drafts.length || 3}</div>
           <h2>Drafts need your attention</h2>
           <p>Continue editing and publish when the guidance is ready.</p>
           <button onClick={() => app.navigate("/studio/content")}>View drafts <Icon name="arrow" /></button>
         </article>
-        <article>
+        <article className="content-card">
           <span className="eyebrow">Documentation health</span>
           <div className="health-ring"><strong>86%</strong></div>
           <p>Most published pages include the recommended guidance.</p>
         </article>
-        <article>
+        <article className="content-card">
           <span className="eyebrow">Token library</span>
           <div className="big-number">2,711</div>
           <h2>Tokens available</h2>
@@ -204,8 +204,8 @@ function Dashboard({ app }: { app: AppContext }) {
             <h2>Keep the system healthy.</h2>
           </div>
         </div>
-        {[["3 pages", "Missing accessibility guidance"], ["12 assets", "Need alternative text"], ["1 token import", "Ready to review"]].map(([n, t]) => (
-          <button key={t}><strong>{n}</strong><span>{t}</span><Icon name="chevron" /></button>
+        {[["3 pages", "Missing accessibility guidance", "/studio/content"], ["12 assets", "Need alternative text", "/studio/assets"], ["1 token import", "Ready to review", "/studio/tokens"]].map(([n, t, href]) => (
+          <button key={t} onClick={() => app.navigate(href)}><strong>{n}</strong><span>{t}</span><Icon name="chevron" /></button>
         ))}
       </section>
       <section className="recent-table">
@@ -287,22 +287,28 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
   const [page, setPage] = useState<ContentPage>(() => structuredClone(initial ?? makeNewPageTemplate()));
   const [selected, setSelected] = useState<string | null>(page.sections[0]?.id || null);
   const [saved, setSaved] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const update = (patch: Partial<ContentPage>) => { setPage((p) => ({ ...p, ...patch })); setSaved(false); };
   const save = async (publish = false) => {
+    if (saving) return;
+    setSaving(true);
     const next: ContentPage = {
       ...page,
       status: publish ? "published" as const : page.status,
       updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     };
     try {
-      await app.upsertPage(next);
+      const result = await app.upsertPage(next);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't save this page.");
       setPage(next);
       setSaved(true);
       pushToast("success", publish ? "Page published." : "Page saved.");
       if (isNew) app.navigate(`/studio/content/${next.id}/edit`);
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "We couldn't save this page.");
+    } finally {
+      setSaving(false);
     }
   };
   const section = page.sections.find((s) => s.id === selected);
@@ -320,8 +326,8 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
           {saved ? "Saved" : "Unsaved changes"}
         </div>
         <div>
-          <button className="secondary-button" onClick={() => window.open(routeForPage(page), "_blank")}>Preview</button>
-          <button className="primary-button" onClick={() => save(true)}>Publish</button>
+           <button className="secondary-button" onClick={() => { const preview = window.open(routeForPage(page), "_blank"); if (preview) preview.opener = null; }} disabled={saving || page.status !== "published"} title={page.status !== "published" ? "Publish this page before previewing it" : undefined}>Preview</button>
+           <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish"}</button>
         </div>
       </header>
       <aside className="editor-outline">
@@ -373,8 +379,8 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
         )}
       </aside>
       <div className="editor-save-bar">
-        <button className="secondary-button" onClick={() => save(false)} disabled={saved}>{saved ? "Saved" : "Save draft"}</button>
-        <button className="primary-button" onClick={() => save(true)}>Publish page</button>
+         <button className="secondary-button" onClick={() => void save(false)} disabled={saved || saving}>{saving ? "Saving..." : saved ? "Saved" : "Save draft"}</button>
+         <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish page"}</button>
       </div>
     </div>
   );
@@ -456,7 +462,8 @@ function addRecommended(page: ContentPage, setPage: (p: ContentPage) => void, se
 async function duplicatePage(app: AppContext, p: ContentPage) {
   const copy: ContentPage = { ...structuredClone(p), id: crypto.randomUUID(), title: `${p.title} copy`, slug: `${p.slug}-copy-${crypto.randomUUID().slice(0, 8)}`, status: "draft" as const };
   try {
-    await app.upsertPage(copy);
+    const result = await app.upsertPage(copy);
+    if (!result.ok) throw new Error(result.error ?? "We couldn't duplicate this page.");
     pushToast("success", "Page duplicated as draft.");
   } catch (error) {
     pushToast("error", error instanceof Error ? error.message : "We couldn't duplicate this page.");
@@ -466,7 +473,8 @@ async function duplicatePage(app: AppContext, p: ContentPage) {
 async function archivePage(app: AppContext, p: ContentPage) {
   if (!confirm(`Archive ${p.title}?`)) return;
   try {
-    await app.upsertPage({ ...p, status: "archived" });
+    const result = await app.upsertPage({ ...p, status: "archived" });
+    if (!result.ok) throw new Error(result.error ?? "We couldn't archive this page.");
     pushToast("success", "Page archived.");
   } catch (error) {
     pushToast("error", error instanceof Error ? error.message : "We couldn't archive this page.");
@@ -475,7 +483,12 @@ async function archivePage(app: AppContext, p: ContentPage) {
 
 function Tokens() {
   const [fileName, setFileName] = useState("token-dari-figma.json");
+  const [selectedGroup, setSelectedGroup] = useState("All tokens");
+  const [query, setQuery] = useState("");
   const groups = [["Color", "1,664"], ["Dimension", "492"], ["String", "363"], ["Font style", "69"], ["Number", "69"], ["Gradient", "43"], ["Grid", "6"], ["Effect", "5"]];
+  const visibleGroups = groups
+    .filter(([name]) => selectedGroup === "All tokens" || name === selectedGroup)
+    .filter(([name]) => name.toLowerCase().includes(query.toLowerCase()));
   return (
     <div className="studio-page">
       <StudioHeader
@@ -496,30 +509,31 @@ function Tokens() {
       </section>
       <div className="token-workspace">
         <aside>
-          <button className="active">All tokens <span>2,711</span></button>
-          {["Core", "Alias", "Element", "Color", "Typography", "Gradient", "Grid", "Effect"].map((g) => (
-            <button key={g}>{g}<Icon name="chevron" /></button>
-          ))}
+           <button className={selectedGroup === "All tokens" ? "active" : ""} onClick={() => setSelectedGroup("All tokens")}>All tokens <span>2,711</span></button>
+           {["Core", "Alias", "Element", "Color", "Typography", "Gradient", "Grid", "Effect"].map((g) => (
+             <button key={g} className={selectedGroup === g ? "active" : ""} onClick={() => setSelectedGroup(g)}>{g}<Icon name="chevron" /></button>
+           ))}
         </aside>
         <section>
           <div className="manager-toolbar">
             <label className="search-field">
               <Icon name="search" />
-              <input placeholder="Search token name..." aria-label="Search tokens" />
-            </label>
-            <button className="secondary-button">Filters</button>
-          </div>
-          <div className="token-group-grid">
-            {groups.map(([n, c]) => (
+               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search token group..." aria-label="Search tokens" />
+             </label>
+             <span className="muted-note">{selectedGroup}</span>
+           </div>
+           <div className="token-group-grid">
+             {visibleGroups.map(([n, c]) => (
               <article key={n}>
                 <div className={`token-preview token-${n.toLowerCase().replace(" ", "-")}`}>{n.slice(0, 2)}</div>
                 <h3>{n}</h3>
                 <strong>{c}</strong>
                 <p>tokens available</p>
-                <button>Explore <Icon name="arrow" /></button>
-              </article>
-            ))}
-          </div>
+                 <button onClick={() => setSelectedGroup(n)}>Explore <Icon name="arrow" /></button>
+               </article>
+             ))}
+             {!visibleGroups.length && <div className="empty-panel"><Icon name="search" /><h2>No token groups found</h2><p>Try a different token group or clear the search.</p></div>}
+           </div>
         </section>
       </div>
     </div>
@@ -527,6 +541,7 @@ function Tokens() {
 }
 
 function ReleasesManager({ app }: { app: AppContext }) {
+  const [editing, setEditing] = useState<Release | null>(null);
   const create = async () => {
     const r: Release = {
        id: crypto.randomUUID(),
@@ -538,15 +553,47 @@ function ReleasesManager({ app }: { app: AppContext }) {
       changes: [],
     };
     try {
-      await app.upsertRelease(r);
+      const result = await app.upsertRelease(r);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't create this release.");
+      setEditing(r);
       pushToast("success", "Draft release created.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "We couldn't create this release.");
     }
   };
+  const save = async (release: Release, status: Release["status"]) => {
+    try {
+      const next = { ...release, status };
+      const result = await app.upsertRelease(next);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't save this release.");
+      setEditing(next);
+      pushToast("success", status === "published" ? "Release published." : status === "draft" ? "Release saved." : "Release unpublished.");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't save this release.");
+    }
+  };
   return (
     <div className="studio-page">
       <StudioHeader eyebrow="Releases" title="Changelog" action={<button className="primary-button" onClick={create}><Icon name="plus" />New release</button>} />
+      {editing && (
+        <section className="release-editor" aria-label="Edit release">
+          <header>
+            <div><span className="eyebrow">Release editor</span><h2>Edit release</h2></div>
+            <button className="drawer-close" onClick={() => setEditing(null)} aria-label="Close release editor"><Icon name="close" /></button>
+          </header>
+          <div className="properties-form">
+            <label>Version<input value={editing.version} onChange={(e) => setEditing({ ...editing, version: e.target.value })} /></label>
+            <label>Title<input value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} /></label>
+            <label>Summary<textarea rows={3} value={editing.summary} onChange={(e) => setEditing({ ...editing, summary: e.target.value })} /></label>
+            <label>Release date<input value={editing.date} onChange={(e) => setEditing({ ...editing, date: e.target.value })} /></label>
+            <label>Changes<textarea rows={6} value={editing.changes.join("\n")} onChange={(e) => setEditing({ ...editing, changes: e.target.value.split("\n").map((change) => change.trim()).filter(Boolean) })} placeholder="One change per line" /></label>
+            <div className="release-editor-actions">
+              <button className="secondary-button" onClick={() => void save(editing, "draft")}>Save draft</button>
+              {editing.status === "published" ? <button className="secondary-button" onClick={() => void save(editing, "draft")}>Unpublish</button> : <button className="primary-button" onClick={() => void save(editing, "published")}>Publish release</button>}
+            </div>
+          </div>
+        </section>
+      )}
       <div className="release-manager">
         {app.data.releases.map((r) => (
           <article key={r.id}>
@@ -557,7 +604,7 @@ function ReleasesManager({ app }: { app: AppContext }) {
             <h2>{r.title}</h2>
             <p>{r.summary}</p>
             <time>{r.date}</time>
-            <button className="secondary-button" onClick={() => pushToast("info", "Release editing opens here. Update version, summary, and changes.")}>Edit release</button>
+            <button className="secondary-button" onClick={() => setEditing({ ...r })}>Edit release</button>
           </article>
         ))}
         {!app.data.releases.length && (
@@ -591,7 +638,8 @@ function Settings({ app }: { app: AppContext }) {
   const save = async () => {
     setSaving(true);
     try {
-      await app.setSettings(settings);
+      const result = await app.setSettings(settings);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't save settings.");
       pushToast("success", "Settings saved.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "We couldn't save settings.");

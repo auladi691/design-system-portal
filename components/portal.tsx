@@ -5,6 +5,7 @@ import type { AppContext } from "@/components/design-system-app";
 import { Icon } from "@/components/icons";
 import { ASSET_CATEGORIES, ASSET_CATEGORY_MAP, categoryLabel, formatFileSize } from "@/lib/asset-categories";
 import { collectionRouteForType, routeForPage } from "@/lib/routes";
+import { pushToast } from "@/lib/toast";
 import type { Asset, ContentPage } from "@/types/content";
 
 const nav = ["Design", "Foundations", "Components", "Patterns", "Resources"];
@@ -21,6 +22,16 @@ export function Portal({ app }: { app: AppContext }) {
     const timer = window.setTimeout(() => setTheme(next), 0);
     document.documentElement.dataset.theme = next;
     return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearch(true);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
   }, []);
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
@@ -316,9 +327,7 @@ function DocSection({ section, page }: { section: ContentPage["sections"][number
         <div className="demo-stage">
           <PreviewGlyph page={page} />
           <div className="demo-controls">
-            <button className="selected">Default</button>
-            <button>Dark surface</button>
-            <button>Reset</button>
+            <PreviewControls />
           </div>
         </div>
       )}
@@ -344,8 +353,26 @@ function DocSection({ section, page }: { section: ContentPage["sections"][number
   );
 }
 
+function PreviewControls() {
+  const [active, setActive] = useState("Default");
+  return <>
+    {["Default", "Dark surface"].map((label) => (
+      <button key={label} className={active === label ? "selected" : ""} onClick={() => setActive(label)} aria-pressed={active === label}>{label}</button>
+    ))}
+    <button onClick={() => setActive("Default")}>Reset</button>
+  </>;
+}
+
 function TokenSample() {
   const rows = [["color.text.primary", "{alias.neutral.900}", "#161616"], ["color.text.secondary", "{alias.neutral.700}", "#585858"], ["color.background.primary", "{core.neutral.0}", "#FFFFFF"]];
+  const copyToken = async (name: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      pushToast("success", `${name} value copied.`);
+    } catch {
+      pushToast("error", "We couldn't copy this token. Try again.");
+    }
+  };
   return (
     <div className="token-table">
       {rows.map((r) => (
@@ -354,7 +381,7 @@ function TokenSample() {
           <code>{r[0]}</code>
           <span>{r[1]}</span>
           <b>{r[2]}</b>
-          <button aria-label={`Copy ${r[0]}`}><Icon name="copy" /></button>
+          <button onClick={() => void copyToken(r[0], r[2])} aria-label={`Copy ${r[0]}`}><Icon name="copy" /></button>
         </div>
       ))}
     </div>
@@ -495,35 +522,64 @@ function Resources({ app }: { app: AppContext }) {
       <span className="eyebrow">Resources</span>
       <h1>Everything you need to start designing.</h1>
        <div className="resource-grid">
-         <button onClick={() => app.navigate("/resources/assets")}>
-           <Icon name="image" />
-           <h2>Asset Library</h2>
-           <p>Icons, illustrations, logos, and files ready to use.</p>
-           <span>Explore <Icon name="arrow" /></span>
-         </button>
+         <ResourceCard title="Asset Library" summary="Icons, illustrations, logos, and files ready to use." icon="image" href="/resources/assets" onNavigate={app.navigate} />
          {resourcePages.map((page) => {
-           const isFigma = page.slug === "figma-library";
-           const isAssetLink = page.slug === "templates" || page.slug === "downloads";
-           const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
-           return isFigma && page.figmaUrl ? (
-             <a className="resource-card" key={page.id} href={page.figmaUrl} target="_blank" rel="noreferrer">
-               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p><span>Open in Figma <Icon name="external" /></span>
-             </a>
-           ) : isFigma ? (
-             <div className="resource-card unavailable" key={page.id}>
-               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p><span>Coming soon</span>
-             </div>
-           ) : (
-             <button key={page.id} onClick={() => app.navigate(href)}>
-               <Icon name="layers" /><h2>{page.title}</h2><p>{page.summary}</p>
-               <span>{isFigma ? "Coming soon" : "Explore"} {!isFigma && <Icon name="arrow" />}</span>
-             </button>
-           );
-         })}
+            const isFigma = page.slug === "figma-library";
+            const isAssetLink = page.slug === "templates" || page.slug === "downloads";
+            const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
+            return <ResourceCard
+              key={page.id}
+              title={page.title}
+              summary={page.summary}
+              icon="layers"
+              href={isFigma && isValidFigmaUrl(page.figmaUrl) ? page.figmaUrl : isFigma ? undefined : href}
+              external={isFigma}
+              unavailable={isFigma && !isValidFigmaUrl(page.figmaUrl)}
+              onNavigate={app.navigate}
+            />;
+          })}
          {!resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>No published resources yet</h2><p>Published resources will appear here.</p></div>}
        </div>
     </div>
   );
+}
+
+function isValidFigmaUrl(value?: string) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "figma.com" || url.hostname.endsWith(".figma.com"));
+  } catch {
+    return false;
+  }
+}
+
+function ResourceCard({
+  title,
+  summary,
+  icon,
+  href,
+  external = false,
+  unavailable = false,
+  onNavigate,
+}: {
+  title: string;
+  summary: string;
+  icon: string;
+  href?: string;
+  external?: boolean;
+  unavailable?: boolean;
+  onNavigate: (to: string) => void;
+}) {
+  const content = <>
+    <span className="resource-card-visual" aria-hidden="true"><Icon name={icon} /></span>
+    <h2>{title}</h2>
+    <p>{summary}</p>
+    <span className="resource-card-action">{unavailable ? "Coming soon" : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
+  </>;
+  if (unavailable) return <div className="resource-card unavailable" aria-disabled="true">{content}</div>;
+  if (external && href) return <a className="resource-card" href={href} target="_blank" rel="noreferrer">{content}</a>;
+  return <button className="resource-card" onClick={() => href && onNavigate(href)}>{content}</button>;
 }
 
 function Changelog({ app }: { app: AppContext }) {
@@ -568,13 +624,13 @@ function EditorialIndex({ kind, app }: { kind: string; app: AppContext }) {
         ? "Principles, getting started, and guidance for contributing to the design system."
         : "Build familiar experiences with patterns that are learned and approved."}</p>
        <div className="resource-grid">
-         {pages.map((page, i) => (
-           <button key={page.id} onClick={() => app.navigate(routeForPage(page))}>
-             <span className="card-index">{String(i + 1).padStart(2, "0")}</span>
-             <h2>{page.title}</h2>
-             <p>{page.summary}</p>
-             <span>Read guidance <Icon name="arrow" /></span>
-           </button>
+          {pages.map((page, i) => (
+            <button className="guidance-card" key={page.id} onClick={() => app.navigate(routeForPage(page))}>
+              <span className="card-index">{String(i + 1).padStart(2, "0")}</span>
+              <h2>{page.title}</h2>
+              <p>{page.summary}</p>
+              <span className="guidance-card-action">Read guidance <Icon name="arrow" /></span>
+            </button>
          ))}
          {!pages.length && <div className="empty-state"><Icon name="file" /><h2>No published guidance yet</h2><p>Published {isDesign ? "design" : "pattern"} guidance will appear here.</p></div>}
        </div>

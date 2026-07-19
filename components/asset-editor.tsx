@@ -96,7 +96,8 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
       updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     };
     try {
-      await app.upsertAsset(next);
+      const result = await app.upsertAsset(next);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't save this asset.");
       setItem(next);
       pushToast("success", publish ? "Asset published." : "Asset saved.");
       if (publish) close();
@@ -110,7 +111,8 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
   const archive = async () => {
     setSaving(true);
     try {
-      await app.upsertAsset({ ...item, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      const result = await app.upsertAsset({ ...item, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't archive this asset.");
       pushToast("success", "Asset archived.");
       close();
     } catch (error) {
@@ -123,7 +125,8 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
   const unpublish = async () => {
     setSaving(true);
     try {
-      await app.upsertAsset({ ...item, status: "draft", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      const result = await app.upsertAsset({ ...item, status: "draft", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't move this asset to draft.");
       setItem({ ...item, status: "draft" });
       pushToast("success", "Asset moved to draft.");
     } catch (error) {
