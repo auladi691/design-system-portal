@@ -19,21 +19,26 @@ export type StoreState = {
   removeAsset: (assetId: string) => Promise<{ ok: boolean; error: string | null }>;
 };
 
-export function useSiteData(options: { admin?: boolean; enabled?: boolean } = {}): StoreState {
+export type InitialSiteData = Pick<StoreState, "data" | "error" | "isPreview">;
+
+export function useSiteData(options: { admin?: boolean; enabled?: boolean; initialData?: InitialSiteData } = {}): StoreState {
   const admin = options.admin ?? false;
   const enabled = options.enabled ?? true;
-  const [data, setData] = useState<SiteData>(emptySiteData);
-  const [readyState, setReady] = useState(false);
-  const [loadingState, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-  const [isPreview, setIsPreview] = useState(false);
+  const initialData = options.initialData;
+  const readyRef = useRef(Boolean(initialData));
+  const [data, setData] = useState<SiteData>(() => initialData?.data ?? emptySiteData);
+  const [readyState, setReady] = useState(Boolean(initialData));
+  const [loadingState, setLoading] = useState(enabled && !initialData);
+  const [error, setError] = useState<string | null>(initialData?.error ?? null);
+  const [isPreview, setIsPreview] = useState(initialData?.isPreview ?? false);
   const skipNext = useRef(false);
   const requestId = useRef(0);
 
   const reload = useCallback(async () => {
     if (!enabled) return;
     const currentRequest = ++requestId.current;
-    setLoading(true);
+    // Keep the server-rendered snapshot visible while the client refreshes it.
+    setLoading(!readyRef.current);
     setError(null);
     const result = admin ? await fetchAdminSite() : await fetchPublishedSite();
     if (currentRequest !== requestId.current) return;
@@ -41,6 +46,7 @@ export function useSiteData(options: { admin?: boolean; enabled?: boolean } = {}
     setIsPreview(result.isPreview);
     setError(result.error);
     setReady(true);
+    readyRef.current = true;
     setLoading(false);
   }, [admin, enabled]);
 

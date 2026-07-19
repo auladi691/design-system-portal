@@ -1,6 +1,7 @@
 import { DesignSystemApp } from "@/components/design-system-app";
 import { ASSET_CATEGORY_MAP } from "@/lib/asset-categories";
 import { fetchPublishedSite } from "@/lib/repository";
+import type { SiteFetchResult } from "@/lib/repository";
 import { pageTypeForRoot } from "@/lib/routes";
 import { notFound } from "next/navigation";
 
@@ -12,6 +13,7 @@ export default async function CatchAllPage({
   params: Promise<{ slug?: string[] }>;
 }) {
   const { slug = [] } = await params;
+  let publishedSite: SiteFetchResult | undefined;
   if (slug[0] && slug[0] !== "studio") {
     const root = slug[0];
     const isAssetRoute = root === "resources" && slug[1] === "assets";
@@ -26,9 +28,10 @@ export default async function CatchAllPage({
     } else if (!isKnownCollection || slug.length > 2) {
       notFound();
     } else if (slug.length === 2 && pageType) {
-      const result = await fetchPublishedSite();
-      if (!result.error && !result.data.pages.some((page) => page.type === pageType && page.slug === slug[1])) notFound();
+      publishedSite = await fetchPublishedSite();
+      if (!publishedSite.error && !publishedSite.data.pages.some((page) => page.type === pageType && page.slug === slug[1])) notFound();
     }
   }
-  return <DesignSystemApp initialPath={`/${slug.join("/")}`} />;
+  if (slug[0] !== "studio" && !publishedSite) publishedSite = await fetchPublishedSite();
+  return <DesignSystemApp initialPath={`/${slug.join("/")}`} initialData={publishedSite} />;
 }

@@ -5,11 +5,12 @@ import { useSiteData } from "@/lib/store";
 import { Portal } from "@/components/portal";
 import { Studio } from "@/components/studio";
 import { ToastRegion } from "@/components/toast-region";
+import type { InitialSiteData } from "@/lib/store";
 
-export function DesignSystemApp({ initialPath }: { initialPath: string }) {
+export function DesignSystemApp({ initialPath, initialData }: { initialPath: string; initialData?: InitialSiteData }) {
   const [path, setPath] = useState(initialPath || "/");
   const isStudio = path.startsWith("/studio");
-  const portalStore = useSiteData({ enabled: !isStudio });
+  const portalStore = useSiteData({ enabled: !isStudio, initialData });
   const studioStore = useSiteData({ admin: true, enabled: isStudio });
 
   useEffect(() => {
