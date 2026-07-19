@@ -182,7 +182,7 @@ function Home({ app }: { app: AppContext }) {
              <button className={`editorial-card card-${i + 1}`} key={p.id} onClick={() => app.navigate(routeForPage(p))}>
               <span className="card-index">0{i + 1}</span>
               <div className="card-visual"><PreviewGlyph page={p} /></div>
-              <div><h3>{p.title}</h3><p>{p.summary}</p><Icon name="arrow" /></div>
+               <div className="card-content"><h3>{p.title}</h3><p>{p.summary}</p><Icon name="arrow" /></div>
             </button>
           ))}
         </div>
@@ -576,9 +576,11 @@ function ResourceCard({
 }) {
   const content = <>
     <span className="resource-card-visual" aria-hidden="true"><Icon name={icon} /></span>
-    <h2>{title}</h2>
-    <p>{summary}</p>
-    <span className="resource-card-action">{unavailable ? "Coming soon" : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
+     <div className="resource-card-content">
+       <h2>{title}</h2>
+       <p>{summary}</p>
+       <span className="resource-card-action">{unavailable ? "Coming soon" : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
+     </div>
   </>;
   if (unavailable) return <div className="resource-card unavailable" aria-disabled="true">{content}</div>;
   if (external && href) return <a className="resource-card" href={href} target="_blank" rel="noreferrer">{content}</a>;
