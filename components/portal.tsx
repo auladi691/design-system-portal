@@ -451,7 +451,7 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
           {assets.map((a) => (
             <button className="asset-card" key={a.id} onClick={() => setSelected(a)} aria-label={`Open ${a.name}`}>
               <div className="asset-glyph">
-                {a.fileUrl && a.mimeType && a.mimeType.startsWith("image/") && a.type !== "icon" ? (
+                {a.fileUrl && a.mimeType && a.mimeType.startsWith("image/") ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.fileUrl} alt={a.altText || a.name} loading="lazy" />
                 ) : (
