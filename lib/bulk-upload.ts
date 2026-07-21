@@ -103,7 +103,7 @@ export function makeItemFromFile(file: File, type: AssetType, existingSlugs: str
   const config = ASSET_CATEGORY_MAP[type];
   return {
     id: crypto.randomUUID(),
-    file: Object.assign(file, { type: file.type || "" }) as File,
+    file,
     type,
     name,
     slug,
