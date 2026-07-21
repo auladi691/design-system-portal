@@ -453,7 +453,7 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
               <div className="asset-glyph">
                 {a.fileUrl && a.mimeType && a.mimeType.startsWith("image/") ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.fileUrl} alt={a.altText || a.name} loading="lazy" />
+                  <img className={a.type === "icon" ? "asset-icon-image" : undefined} src={a.fileUrl} alt={a.altText || a.name} loading="lazy" />
                 ) : (
                   <span>{a.glyph}</span>
                 )}
@@ -490,7 +490,7 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
         <div className={`drawer-preview preview-${bg}`} aria-hidden="true">
           {canPreviewImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={asset.fileUrl!} alt={asset.altText || asset.name} />
+            <img className={asset.type === "icon" ? "asset-icon-image" : undefined} src={asset.fileUrl!} alt={asset.altText || asset.name} />
           ) : <span>{asset.glyph}</span>}
         </div>
         <div className="preview-switch" role="group" aria-label="Preview background">
