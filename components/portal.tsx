@@ -136,8 +136,8 @@ function LoadError({ app, assetLibrary }: { app: AppContext; assetLibrary: boole
   return (
     <div className="empty-state" role="alert">
       <Icon name="warning" />
-      <h1>{assetLibrary ? "We couldn’t load the Asset Library" : "We couldn’t load the latest guidance"}</h1>
-      <p>{assetLibrary ? "Refresh the page or try again in a moment." : "Refresh the page or try again in a moment."}</p>
+      <h2>{assetLibrary ? "We couldn’t load the Asset Library" : "We couldn’t load the latest guidance"}</h2>
+      <p>Refresh the page or try again in a moment.</p>
       <button className="primary-button" onClick={() => void app.reload()}>Try again</button>
     </div>
   );
