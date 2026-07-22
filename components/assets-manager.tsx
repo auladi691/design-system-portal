@@ -18,7 +18,7 @@ type AssetsManagerProps = { app: AppContext };
 const CATEGORY_TABS: { slug: "all" | AssetType; label: string }[] = ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label }));
 
 export function AssetsManager({ app }: AssetsManagerProps) {
-  const [type, setType] = useState<"all" | AssetType>("all");
+  const [type, setType] = useState<AssetType>(ASSET_CATEGORIES[0].slug as AssetType);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Asset | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -30,7 +30,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
 
   const lower = query.toLowerCase();
   const list = useMemo(
-    () => app.data.assets.filter((a) => (type === "all" || a.type === type) && `${a.name} ${a.category} ${a.brand} ${a.keywords.join(" ")}`.toLowerCase().includes(lower)),
+    () => app.data.assets.filter((a) => a.type === type && `${a.name} ${a.category} ${a.brand} ${a.keywords.join(" ")}`.toLowerCase().includes(lower)),
     [app.data.assets, type, lower],
   );
 
@@ -205,7 +205,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         eyebrow="Assets"
         title="Asset Library"
         action={
-          <button className="primary-button" onClick={() => openBulk(type === "all" ? "icon" : type)}>
+          <button className="primary-button" onClick={() => openBulk(type)}>
             <Icon name="upload" />Bulk upload
           </button>
         }
@@ -218,10 +218,10 @@ export function AssetsManager({ app }: AssetsManagerProps) {
             role="tab"
             aria-selected={type === tab.slug}
             className={type === tab.slug ? "active" : ""}
-            onClick={() => setType(tab.slug)}
+            onClick={() => setType(tab.slug as AssetType)}
           >
             {tab.label}
-            <span className="tab-count">{tab.slug === "all" ? app.data.assets.length : app.data.assets.filter((a) => a.type === tab.slug).length}</span>
+            <span className="tab-count">{app.data.assets.filter((a) => a.type === tab.slug).length}</span>
           </button>
         ))}
       </div>
@@ -232,7 +232,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search assets..." aria-label="Search assets" />
         </label>
         <div className="manager-toolbar-actions">
-          <button className="secondary-button" onClick={() => createBlank(type === "all" ? "icon" : type)} disabled={busy}>
+          <button className="secondary-button" onClick={() => createBlank(type)} disabled={busy}>
             <Icon name="plus" />New draft
           </button>
         </div>
@@ -254,8 +254,8 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         <div className="empty-panel">
           <Icon name="image" />
           <h2>No assets yet</h2>
-          <p>{type === "all" ? "Upload icons, illustrations, logos, and other resources." : `Upload ${categoryLabel(type).toLowerCase()} to get started.`}</p>
-          <button className="primary-button" onClick={() => openBulk(type === "all" ? "icon" : type)}><Icon name="upload" />Bulk upload</button>
+          <p>{`Upload ${categoryLabel(type).toLowerCase()} to get started.`}</p>
+          <button className="primary-button" onClick={() => openBulk(type)}><Icon name="upload" />Bulk upload</button>
         </div>
       ) : (
         <>

@@ -399,7 +399,8 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const active: Asset["type"] | "all" = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : "all";
   const config = active === "all" ? null : ASSET_CATEGORY_MAP[active];
   const showBrand = config?.showBrandFilter ?? false;
-  const isVisual = config?.visual ?? true;
+   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   const isVisual = config?.visual ?? true;
 
   const lower = query.toLowerCase();
   const publishedAssets = app.data.assets.filter((a) => a.status === "published");
@@ -447,7 +448,7 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
              : "Try a different word or clear the filters."}</p>
         </div>
       ) : (
-        <div className={`asset-grid icon-assets`}>
+        <div className="asset-grid icon-assets">
           {assets.map((a) => (
             <button className="asset-card" key={a.id} onClick={() => setSelected(a)} aria-label={`Open ${a.name}`}>
               <div className="asset-glyph">
