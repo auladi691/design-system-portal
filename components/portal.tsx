@@ -445,7 +445,7 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
              : "Try a different word or clear the filters."}</p>
         </div>
       ) : (
-        <div className="asset-grid icon-assets">
+        <div className={`asset-grid ${["icon", "icon-illustration", "logo"].includes(active) ? "icon-assets" : (config?.visual ?? true) ? "visual-assets" : ""}`}>
           {assets.map((a) => (
             <button className="asset-card" key={a.id} onClick={() => setSelected(a)} aria-label={`Open ${a.name}`}>
               <div className="asset-glyph">
