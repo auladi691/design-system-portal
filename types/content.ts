@@ -78,6 +78,71 @@ export type SiteSettings = {
   tagline: string;
   description: string;
   visibility: "public" | "unlisted";
+  seo?: {
+    title: string;
+    description: string;
+  };
+  portal?: PortalConfig;
+};
+
+export type PortalLink = {
+  label: string;
+  destination: string;
+  visible: boolean;
+  order: number;
+};
+
+export type PortalCard = {
+  id: string;
+  label: string;
+  title: string;
+  summary: string;
+  destination: string;
+  visible: boolean;
+  order: number;
+  icon?: string;
+  availability?: "available" | "coming-soon";
+};
+
+export type PortalCollection = {
+  eyebrow: string;
+  title: string;
+  summary: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  cards: PortalCard[];
+};
+
+export type PortalConfig = {
+  navigation: PortalLink[];
+  footer: {
+    description: string;
+    links: PortalLink[];
+  };
+  seo: {
+    title: string;
+    description: string;
+  };
+  home: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    primaryCta: PortalLink;
+    secondaryCta?: PortalLink;
+    statementEyebrow: string;
+    statementTitle: string;
+    storyEyebrow: string;
+    storyTitle: string;
+    storyDescription: string;
+    storySteps: { number: string; title: string; description: string }[];
+  };
+  collections: Record<string, PortalCollection>;
+  copy: {
+    unavailable: string;
+    noResults: string;
+    loading: string;
+    loadError: string;
+  };
 };
 
 export type SiteData = {

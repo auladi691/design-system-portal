@@ -40,12 +40,16 @@ test("route contract covers every required Portal route", async () => {
   assert.match(portal, /routeForPage\(p\)/);
   assert.match(portal, /No published guidance yet/);
   assert.match(portal, /No matching guidance/);
-  assert.match(portal, /No published assets yet/);
   assert.match(portal, /No assets in this category yet/);
   assert.match(portal, /No matching assets/);
-  assert.match(portal, /Loading guidance/);
+  assert.match(portal, /Loading the latest published guidance/);
   assert.match(portal, /We couldn.t load the Asset Library/);
   assert.match(portal, /Published releases will appear here/);
+  assert.match(portal, /settings\.portal/);
+  assert.match(portal, /portal\?\.navigation/);
+  assert.match(portal, /portal\?\.footer/);
+  assert.match(portal, /settings\.portal\?\.home/);
+  assert.match(portal, /settings\.portal\?\.collections/);
   assert.match(page, /notFound\(\)/);
   assert.match(page, /fetchPublishedSite/);
   assert.match(page, /root === "changelog" \|\| root === "search"/);
@@ -63,6 +67,9 @@ test("route contract covers every required Portal route", async () => {
 
 test("published-only and safe route rules are present", async () => {
   const repository = await readProjectFile("lib/repository.ts");
+  const store = await readProjectFile("lib/store.ts");
+  const supabaseClient = await readProjectFile("lib/supabase-client.ts");
+  const nextConfig = await readProjectFile("next.config.ts");
   const bulkUpload = await readProjectFile("lib/bulk-upload.ts");
   const studio = await readProjectFile("components/studio.tsx");
   const assetsManager = await readProjectFile("components/assets-manager.tsx");
@@ -89,6 +96,50 @@ test("published-only and safe route rules are present", async () => {
   assert.match(privateStorage, /public\.assets\.status = 'published'/);
   assert.match(routes, /resource: "resources"/);
   assert.doesNotMatch(portalSource(repository), /falling back to seed/);
+  assert.doesNotMatch(repository, /from ["']@\/lib\/seed-data["']/);
+  assert.doesNotMatch(store, /from ["']@\/lib\/seed-data["']/);
+  assert.doesNotMatch(supabaseClient, /FALLBACK_URL|FALLBACK_KEY/);
+  assert.doesNotMatch(nextConfig, /NEXT_PUBLIC_SUPABASE_(URL|ANON_KEY):/);
+  assert.match(repository, /seo: settingsRes\.data\?\.content\?\.seo/);
+  assert.match(repository, /portal: settingsRes\.data\?\.content\?\.portal/);
+  assert.match(studio, /parsePortalConfig|formatPortalConfig/);
+  assert.match(studio, /Portal content configuration/);
+});
+
+test("CMS content is not persisted in browser storage", async () => {
+  const store = await readProjectFile("lib/store.ts");
+  const auth = await readProjectFile("lib/auth.ts");
+  const portal = await readProjectFile("components/portal.tsx");
+
+  assert.doesNotMatch(store, /localStorage|sessionStorage/);
+  assert.doesNotMatch(auth, /sessionStorage/);
+  assert.doesNotMatch(portal, /sessionStorage/);
+});
+
+test("portal config lives in CMS settings and drives public shell copy", async () => {
+  const types = await readProjectFile("types/content.ts");
+  const portalConfig = await readProjectFile("lib/portal-config.ts");
+  const portal = await readProjectFile("components/portal.tsx");
+  const studio = await readProjectFile("components/studio.tsx");
+  const repository = await readProjectFile("lib/repository.ts");
+
+  assert.match(types, /export type PortalConfig/);
+  assert.match(types, /portal\?: PortalConfig/);
+  assert.match(portalConfig, /export function parsePortalConfig/);
+  assert.match(portalConfig, /export function formatPortalConfig/);
+  assert.match(portalConfig, /config\.navigation/);
+  assert.match(portalConfig, /config\.footer/);
+  assert.match(portalConfig, /config\.home/);
+  assert.match(portalConfig, /config\.collections/);
+  assert.match(portalConfig, /config\.copy/);
+  assert.match(repository, /portal: settingsRes\.data\?\.content\?\.portal/);
+  assert.match(studio, /parsePortalConfig\(portalConfig\)/);
+  assert.match(studio, /Portal content configuration/);
+  assert.match(portal, /portal\?\.navigation\.filter/);
+  assert.match(portal, /portal\?\.footer\.description/);
+  assert.match(portal, /settings\.portal\?\.home/);
+  assert.match(portal, /settings\.portal\?\.collections/);
+  assert.match(portal, /settings\.portal\?\.copy/);
 });
 
 function portalSource(repository) {

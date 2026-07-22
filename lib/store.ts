@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAdminSite, fetchPublishedSite, subscribeToAssets } from "@/lib/repository";
-import { emptySiteData } from "@/lib/seed-data";
+import { emptySiteData } from "@/lib/empty-site-data";
 import type { Asset, ContentPage, Release, SiteData, SiteSettings } from "@/types/content";
 
 export type StoreState = {

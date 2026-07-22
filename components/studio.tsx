@@ -9,6 +9,7 @@ import { getSupabaseConfig } from "@/lib/supabase-client";
 import { routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
 import type { ContentPage, ContentSection, PageType, Release, VisualBlock, VisualBlockKind } from "@/types/content";
+import { formatPortalConfig, parsePortalConfig } from "@/lib/portal-config";
 
 const studioNav = [
   ["dashboard", "grid", "Dashboard"],
@@ -676,11 +677,14 @@ function Feedback() {
 
 function Settings({ app }: { app: AppContext }) {
   const [settings, setSettings] = useState(app.data.settings);
+  const [portalConfig, setPortalConfig] = useState(formatPortalConfig(app.data.settings.portal));
   const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
     try {
-      const result = await app.setSettings(settings);
+      const portal = portalConfig.trim() ? parsePortalConfig(portalConfig) : undefined;
+      if (portalConfig.trim() && !portal) throw new Error("Portal configuration must be valid JSON with navigation, footer, home, collections, and copy.");
+      const result = await app.setSettings({ ...settings, portal, seo: { title: settings.seo?.title ?? "", description: settings.seo?.description ?? "" } });
       if (!result.ok) throw new Error(result.error ?? "We couldn't save settings.");
       pushToast("success", "Settings saved.");
     } catch (error) {
@@ -705,6 +709,9 @@ function Settings({ app }: { app: AppContext }) {
             <label>Design system name<input value={settings.name} onChange={(e) => setSettings({ ...settings, name: e.target.value })} /></label>
             <label>Hero statement<input value={settings.tagline} onChange={(e) => setSettings({ ...settings, tagline: e.target.value })} /></label>
             <label>Description<textarea rows={5} value={settings.description} onChange={(e) => setSettings({ ...settings, description: e.target.value })} /></label>
+            <label>SEO title<input value={settings.seo?.title ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: e.target.value, description: settings.seo?.description ?? "" } })} /></label>
+            <label>SEO description<textarea rows={3} value={settings.seo?.description ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: settings.seo?.title ?? "", description: e.target.value } })} /></label>
+            <label>Portal content configuration<textarea rows={18} value={portalConfig} onChange={(e) => setPortalConfig(e.target.value)} placeholder="Paste the JSON configuration for navigation, landing content, collections, resources, footer, and public copy." /></label>
             <label>Portal visibility
               <select value={settings.visibility} onChange={(e) => setSettings({ ...settings, visibility: e.target.value as "public" | "unlisted" })}>
                 <option value="unlisted">Unlisted — no login, no search indexing</option>

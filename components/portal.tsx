@@ -10,7 +10,6 @@ import { useDialogFocus } from "@/components/dialog-focus";
 import type { Asset, ContentPage } from "@/types/content";
 import { VisualBlock } from "@/components/visual-block";
 
-const nav = ["Design", "Foundations", "Components", "Patterns", "Resources"];
 const BRANDS = ["All", "Shared", "IM3", "Indosat", "Tri", "Partner"] as const;
 
 export function Portal({ app }: { app: AppContext }) {
@@ -46,6 +45,14 @@ export function Portal({ app }: { app: AppContext }) {
   const root = parts[0];
   const slug = parts[1];
   const page = app.data.pages.find((p) => p.slug === slug && p.status === "published");
+  const portal = app.data.settings.portal;
+  const nav = portal?.navigation.filter((item) => item.visible).sort((a, b) => a.order - b.order) ?? [
+    { label: "Design", destination: "/design" },
+    { label: "Foundations", destination: "/foundations" },
+    { label: "Components", destination: "/components" },
+    { label: "Patterns", destination: "/patterns" },
+    { label: "Resources", destination: "/resources" },
+  ];
 
   let content: React.ReactNode;
   if (app.loading) content = <LoadingState assetLibrary={root === "resources" && parts[1] === "assets"} />;
@@ -76,8 +83,8 @@ export function Portal({ app }: { app: AppContext }) {
         </button>
         <nav className="desktop-nav" aria-label="Main navigation">
           {nav.map((item) => (
-            <button key={item} className={root === item.toLowerCase() ? "active" : ""} onClick={() => app.navigate(`/${item.toLowerCase()}`)}>
-              {item}
+            <button key={item.destination} className={app.path === item.destination ? "active" : ""} onClick={() => app.navigate(item.destination)}>
+              {item.label}
             </button>
           ))}
         </nav>
@@ -98,8 +105,8 @@ export function Portal({ app }: { app: AppContext }) {
       {menu && (
         <div className="mobile-menu">
           {nav.map((item) => (
-            <button key={item} onClick={() => { app.navigate(`/${item.toLowerCase()}`); setMenu(false); }}>
-              {item}
+            <button key={item.destination} onClick={() => { app.navigate(item.destination); setMenu(false); }}>
+              {item.label}
               <Icon name="arrow" />
             </button>
           ))}
@@ -111,11 +118,13 @@ export function Portal({ app }: { app: AppContext }) {
           <span className="brand-mark" aria-hidden="true">O</span>
           <strong>{app.data.settings.name}</strong>
         </div>
-        <p>One design language for clearer, more consistent experiences.</p>
+        <p>{portal?.footer.description ?? "One design language for clearer, more consistent experiences."}</p>
         <div className="footer-links">
-          <button onClick={() => app.navigate("/changelog")}>Changelog</button>
-          <button onClick={() => app.navigate("/resources/assets")}>Asset Library</button>
-          <button onClick={() => app.navigate("/studio/login")}>Administrator</button>
+          {(portal?.footer.links.filter((item) => item.visible).sort((a, b) => a.order - b.order) ?? [
+            { label: "Changelog", destination: "/changelog" },
+            { label: "Asset Library", destination: "/resources/assets" },
+            { label: "Administrator", destination: "/studio/login" },
+          ]).map((item) => <button key={item.destination} onClick={() => app.navigate(item.destination)}>{item.label}</button>)}
         </div>
       </footer>
       {search && <SearchDialog app={app} close={() => setSearch(false)} />}
@@ -133,10 +142,11 @@ function LoadingState({ assetLibrary }: { assetLibrary: boolean }) {
 }
 
 function LoadError({ app, assetLibrary }: { app: AppContext; assetLibrary: boolean }) {
+  const copy = app.data.settings.portal?.copy;
   return (
     <div className="empty-state" role="alert">
       <Icon name="warning" />
-      <h2>{assetLibrary ? "We couldn’t load the Asset Library" : "We couldn’t load the latest guidance"}</h2>
+      <h2>{copy?.loadError ?? (assetLibrary ? "We couldn't load the Asset Library" : "We couldn't load the latest guidance")}</h2>
       <p>Refresh the page or try again in a moment.</p>
       <button className="primary-button" onClick={() => void app.reload()}>Try again</button>
     </div>
@@ -145,16 +155,17 @@ function LoadError({ app, assetLibrary }: { app: AppContext; assetLibrary: boole
 
 function Home({ app }: { app: AppContext }) {
   const featured = app.data.pages.filter((p) => p.featured && p.status === "published");
+  const home = app.data.settings.portal?.home;
   return (
     <>
       <section className="home-hero">
         <div className="hero-copy reveal">
-          <span className="eyebrow">Design System</span>
-          <h1>{app.data.settings.tagline}</h1>
-          <p>{app.data.settings.description}</p>
+          <span className="eyebrow">{home?.eyebrow ?? "Design System"}</span>
+          <h1>{home?.title ?? app.data.settings.tagline}</h1>
+          <p>{home?.description ?? app.data.settings.description}</p>
           <div className="button-row">
-            <button className="primary-button" onClick={() => app.navigate("/foundations")}>Explore foundations <Icon name="arrow" /></button>
-            <button className="text-button" onClick={() => app.navigate("/components")}>Browse components</button>
+            <button className="primary-button" onClick={() => app.navigate(home?.primaryCta.destination ?? "/foundations")}>{home?.primaryCta.label ?? "Explore foundations"} <Icon name="arrow" /></button>
+            <button className="text-button" onClick={() => app.navigate(home?.secondaryCta?.destination ?? "/components")}>{home?.secondaryCta?.label ?? "Browse components"}</button>
           </div>
         </div>
         <div className="hero-art" aria-hidden="true">
@@ -169,8 +180,8 @@ function Home({ app }: { app: AppContext }) {
         </div>
       </section>
       <section className="statement-section">
-        <p>Built for designers.</p>
-        <h2>Find the right decisions.<br />Use them with confidence.</h2>
+        <p>{home?.statementEyebrow ?? "Built for designers."}</p>
+        <h2>{(home?.statementTitle ?? "Find the right decisions.\nUse them with confidence.").split("\n").map((line, i) => <span key={i}>{line}{i === 0 && <br />}</span>)}</h2>
       </section>
       <section className="home-section">
         <div className="section-heading">
@@ -189,16 +200,18 @@ function Home({ app }: { app: AppContext }) {
       </section>
       <section className="system-story">
         <div className="sticky-story">
-          <span className="eyebrow">One source of truth</span>
-          <h2>From tokens to experiences.</h2>
-          <p>Every decision connects so designers can move faster without losing consistency.</p>
+          <span className="eyebrow">{home?.storyEyebrow ?? "One source of truth"}</span>
+          <h2>{home?.storyTitle ?? "From tokens to experiences."}</h2>
+          <p>{home?.storyDescription ?? "Every decision connects so designers can move faster without losing consistency."}</p>
         </div>
         <div className="story-steps">
-          {[["01", "Foundations", "Visual decisions that form the baseline."],
-            ["02", "Components", "Elements ready to use and combine."],
-            ["03", "Patterns", "Ways to solve recurring needs."],
-            ["04", "Assets", "Icons, illustrations, and resources in one place."]].map(([n, t, d]) => (
-              <article key={n}><span>{n}</span><h3>{t}</h3><p>{d}</p></article>
+          {(home?.storySteps ?? [
+            { number: "01", title: "Foundations", description: "Visual decisions that form the baseline." },
+            { number: "02", title: "Components", description: "Elements ready to use and combine." },
+            { number: "03", title: "Patterns", description: "Ways to solve recurring needs." },
+            { number: "04", title: "Assets", description: "Icons, illustrations, and resources in one place." }
+          ]).map((step) => (
+              <article key={step.number}><span>{step.number}</span><h3>{step.title}</h3><p>{step.description}</p></article>
             ))}
         </div>
       </section>
@@ -219,14 +232,16 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
   const [query, setQuery] = useState("");
   const groups = [...new Set(pages.map((p) => p.category))];
   const lower = query.toLowerCase();
+  const collectionKey = type === "foundation" ? "foundations" : "components";
+  const collection = app.data.settings.portal?.collections[collectionKey];
   return (
     <div className="collection-page">
       <section className="collection-hero">
-        <span className="eyebrow">{type === "foundation" ? "Foundations" : "Components"}</span>
-        <h1>{type === "foundation" ? "Foundational decisions for consistent experiences." : "Elements that help designers shape experiences."}</h1>
-        <p>{type === "foundation"
+        <span className="eyebrow">{collection?.eyebrow ?? (type === "foundation" ? "Foundations" : "Components")}</span>
+        <h1>{collection?.title ?? (type === "foundation" ? "Foundational decisions for consistent experiences." : "Elements that help designers shape experiences.")}</h1>
+        <p>{collection?.summary ?? (type === "foundation"
           ? "Use foundations to make clear, reusable, and easy-to-understand visual choices."
-          : "Find anatomy, variants, states, behavior, and usage guidance for each component."}</p>
+          : "Find anatomy, variants, states, behavior, and usage guidance for each component.")}</p>
       </section>
       <div className="collection-tools">
         <label className="search-field">
@@ -250,18 +265,18 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
             </div>
           </section>
         ) : null;
-      })}
+       })}
        {!pages.length && (
         <div className="empty-state">
            <Icon name="search" />
-           <h2>No published guidance yet</h2>
-           <p>Published foundations and components will appear here.</p>
+           <h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2>
+           <p>{collection?.emptyDescription ?? "Published foundations and components will appear here."}</p>
          </div>
        )}
        {pages.length > 0 && !groups.some((group) => pages.some((p) => p.category === group && `${p.title} ${p.summary}`.toLowerCase().includes(lower))) && (
          <div className="empty-state">
            <Icon name="search" />
-           <h2>No matching guidance</h2>
+           <h2>{app.data.settings.portal?.copy.noResults ?? "No matching guidance"}</h2>
            <p>Try a different word or clear the search.</p>
          </div>
        )}
@@ -519,13 +534,37 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
 
 function Resources({ app }: { app: AppContext }) {
   const resourcePages = app.data.pages.filter((p) => p.type === "resource" && p.status === "published");
+  const collection = app.data.settings.portal?.collections.resources;
+  const cards = collection?.cards.filter((c) => c.visible).sort((a, b) => a.order - b.order) ?? [
+    { id: "asset-library", label: "Asset Library", title: "Asset Library", summary: "Icons, illustrations, logos, and files ready to use.", destination: "/resources/assets", icon: "image", visible: true, order: 0 }
+  ];
+  const unavailableLabel = app.data.settings.portal?.copy.unavailable ?? "Coming soon";
   return (
     <div className="simple-index">
-      <span className="eyebrow">Resources</span>
-      <h1>Everything you need to start designing.</h1>
+      <span className="eyebrow">{collection?.eyebrow ?? "Resources"}</span>
+      <h1>{collection?.title ?? "Everything you need to start designing."}</h1>
        <div className="resource-grid">
-         <ResourceCard title="Asset Library" summary="Icons, illustrations, logos, and files ready to use." icon="image" href="/resources/assets" onNavigate={app.navigate} />
-         {resourcePages.map((page) => {
+         {cards.map((card) => {
+           const page = resourcePages.find((p) => p.slug === card.id || p.id === card.id);
+           const isFigma = page?.slug === "figma-library";
+           const isAssetLink = page?.slug === "templates" || page?.slug === "downloads";
+           const href = page && isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : page ? `/resources/${page.slug}` : card.destination;
+           const isExternal = isFigma || card.destination.startsWith("http");
+           const unavailable = card.availability === "coming-soon" || (isFigma && !isValidFigmaUrl(page?.figmaUrl));
+           const finalHref = isFigma && isValidFigmaUrl(page?.figmaUrl) ? page!.figmaUrl : href;
+           return <ResourceCard
+             key={card.id}
+             title={page?.title ?? card.title}
+             summary={page?.summary ?? card.summary}
+             icon={card.icon ?? "layers"}
+             href={unavailable ? undefined : finalHref}
+             external={isExternal}
+             unavailable={unavailable}
+             unavailableLabel={unavailableLabel}
+             onNavigate={app.navigate}
+           />;
+         })}
+         {resourcePages.filter((p) => !cards.some((c) => c.id === p.id || c.id === p.slug)).map((page) => {
             const isFigma = page.slug === "figma-library";
             const isAssetLink = page.slug === "templates" || page.slug === "downloads";
             const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
@@ -537,10 +576,11 @@ function Resources({ app }: { app: AppContext }) {
               href={isFigma && isValidFigmaUrl(page.figmaUrl) ? page.figmaUrl : isFigma ? undefined : href}
               external={isFigma}
               unavailable={isFigma && !isValidFigmaUrl(page.figmaUrl)}
+              unavailableLabel={unavailableLabel}
               onNavigate={app.navigate}
             />;
           })}
-         {!resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>No published resources yet</h2><p>Published resources will appear here.</p></div>}
+         {!cards.length && !resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published resources yet"}</h2><p>{collection?.emptyDescription ?? "Published resources will appear here."}</p></div>}
        </div>
     </div>
   );
@@ -564,6 +604,7 @@ function ResourceCard({
   external = false,
   unavailable = false,
   onNavigate,
+  unavailableLabel,
 }: {
   title: string;
   summary: string;
@@ -572,13 +613,14 @@ function ResourceCard({
   external?: boolean;
   unavailable?: boolean;
   onNavigate: (to: string) => void;
+  unavailableLabel?: string;
 }) {
   const content = <>
     <span className="resource-card-visual" aria-hidden="true"><Icon name={icon} /></span>
      <div className="resource-card-content">
        <h2>{title}</h2>
        <p>{summary}</p>
-       <span className="resource-card-action">{unavailable ? "Coming soon" : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
+       <span className="resource-card-action">{unavailable ? (unavailableLabel ?? "Coming soon") : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
      </div>
   </>;
   if (unavailable) return <div className="resource-card unavailable" aria-disabled="true">{content}</div>;
@@ -620,13 +662,15 @@ function EditorialIndex({ kind, app }: { kind: string; app: AppContext }) {
   const isDesign = kind === "design";
   const type = isDesign ? "design" : "pattern";
   const pages = app.data.pages.filter((p) => p.type === type && p.status === "published");
+  const collectionKey = isDesign ? "design" : "patterns";
+  const collection = app.data.settings.portal?.collections[collectionKey];
   return (
     <div className="simple-index">
-      <span className="eyebrow">{isDesign ? "Design" : "Patterns"}</span>
-      <h1>{isDesign ? "How we make design decisions." : "Ways to solve recurring needs."}</h1>
-      <p className="lead">{isDesign
+      <span className="eyebrow">{collection?.eyebrow ?? (isDesign ? "Design" : "Patterns")}</span>
+      <h1>{collection?.title ?? (isDesign ? "How we make design decisions." : "Ways to solve recurring needs.")}</h1>
+      <p className="lead">{collection?.summary ?? (isDesign
         ? "Principles, getting started, and guidance for contributing to the design system."
-        : "Build familiar experiences with patterns that are learned and approved."}</p>
+        : "Build familiar experiences with patterns that are learned and approved.")}</p>
        <div className="resource-grid">
           {pages.map((page, i) => (
             <button className="guidance-card" key={page.id} onClick={() => app.navigate(routeForPage(page))}>
@@ -636,7 +680,7 @@ function EditorialIndex({ kind, app }: { kind: string; app: AppContext }) {
               <span className="guidance-card-action">Read guidance <Icon name="arrow" /></span>
             </button>
          ))}
-         {!pages.length && <div className="empty-state"><Icon name="file" /><h2>No published guidance yet</h2><p>Published {isDesign ? "design" : "pattern"} guidance will appear here.</p></div>}
+         {!pages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2><p>{collection?.emptyDescription ?? `Published ${isDesign ? "design" : "pattern"} guidance will appear here.`}</p></div>}
        </div>
     </div>
   );

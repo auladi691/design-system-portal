@@ -1,5 +1,5 @@
 import { getSupabase, STORAGE_BUCKET } from "@/lib/supabase-client";
-import { emptySiteData, seedData } from "@/lib/seed-data";
+import { emptySiteData } from "@/lib/empty-site-data";
 import type { Asset, ContentPage, Release, SiteData, SiteSettings } from "@/types/content";
 
 export const ASSET_TABLE = "assets";
@@ -144,7 +144,7 @@ function formatDate(value: string | null): string {
 
 export async function fetchPublishedSite(): Promise<SiteFetchResult> {
   const client = getSupabase();
-  if (!client) return { data: seedData, error: null, isPreview: true };
+  if (!client) return { data: emptySiteData, error: "Supabase is not configured.", isPreview: false };
   try {
     const [pagesRes, assetsRes, releasesRes, settingsRes] = await Promise.all([
       client.from(PAGES_TABLE).select("*").eq("status", "published").order("updated_at", { ascending: false }),
@@ -157,10 +157,12 @@ export async function fetchPublishedSite(): Promise<SiteFetchResult> {
     if (releasesRes.error) throw releasesRes.error;
     if (settingsRes.error) throw settingsRes.error;
     const settings: SiteSettings = {
-      name: settingsRes.data?.content?.name ?? seedData.settings.name,
-      tagline: settingsRes.data?.content?.tagline ?? seedData.settings.tagline,
-      description: settingsRes.data?.content?.description ?? seedData.settings.description,
-      visibility: settingsRes.data?.content?.visibility ?? seedData.settings.visibility,
+      name: settingsRes.data?.content?.name ?? "",
+      tagline: settingsRes.data?.content?.tagline ?? "",
+      description: settingsRes.data?.content?.description ?? "",
+      visibility: settingsRes.data?.content?.visibility ?? "unlisted",
+      seo: settingsRes.data?.content?.seo ?? { title: "", description: "" },
+      portal: settingsRes.data?.content?.portal,
     };
     return { data: {
       settings,
@@ -175,7 +177,7 @@ export async function fetchPublishedSite(): Promise<SiteFetchResult> {
 
 export async function fetchAdminSite(): Promise<SiteFetchResult> {
   const client = getSupabase();
-  if (!client) return { data: seedData, error: null, isPreview: true };
+  if (!client) return { data: emptySiteData, error: "Supabase is not configured.", isPreview: false };
   try {
     const [pagesRes, assetsRes, releasesRes, settingsRes] = await Promise.all([
       client.from(PAGES_TABLE).select("*").order("updated_at", { ascending: false }),
@@ -188,10 +190,12 @@ export async function fetchAdminSite(): Promise<SiteFetchResult> {
     if (releasesRes.error) throw releasesRes.error;
     if (settingsRes.error) throw settingsRes.error;
     const settings: SiteSettings = {
-      name: settingsRes.data?.content?.name ?? seedData.settings.name,
-      tagline: settingsRes.data?.content?.tagline ?? seedData.settings.tagline,
-      description: settingsRes.data?.content?.description ?? seedData.settings.description,
-      visibility: settingsRes.data?.content?.visibility ?? seedData.settings.visibility,
+      name: settingsRes.data?.content?.name ?? "",
+      tagline: settingsRes.data?.content?.tagline ?? "",
+      description: settingsRes.data?.content?.description ?? "",
+      visibility: settingsRes.data?.content?.visibility ?? "unlisted",
+      seo: settingsRes.data?.content?.seo ?? { title: "", description: "" },
+      portal: settingsRes.data?.content?.portal,
     };
     return { data: {
       settings,
