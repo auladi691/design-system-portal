@@ -10,6 +10,7 @@ import { routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
 import type { ContentPage, ContentSection, PageType, Release, VisualBlock, VisualBlockKind } from "@/types/content";
 import { formatPortalConfig, parsePortalConfig } from "@/lib/portal-config";
+import { parseTokenLibrary, emptyTokenLibrary, type TokenLibrary } from "@/lib/tokens";
 
 const studioNav = [
   ["dashboard", "grid", "Dashboard"],
@@ -525,13 +526,45 @@ async function archivePage(app: AppContext, p: ContentPage) {
 }
 
 function Tokens() {
-  const [fileName, setFileName] = useState("token-dari-figma.json");
+  const [library, setLibrary] = useState<TokenLibrary>(() => emptyTokenLibrary("token-dari-figma.json"));
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (loaded) return;
+    fetch("/token-dari-figma.json")
+      .then((res) => res.json())
+      .then((parsed) => {
+        setLibrary(parseTokenLibrary(parsed, "token-dari-figma.json"));
+        setLoaded(true);
+      })
+      .catch(() => {
+        setLibrary(emptyTokenLibrary("token-dari-figma.json"));
+        setLoaded(true);
+      });
+  }, [loaded]);
+
   const [selectedGroup, setSelectedGroup] = useState("All tokens");
   const [query, setQuery] = useState("");
-  const groups = [["Color", "1,664"], ["Dimension", "492"], ["String", "363"], ["Font style", "69"], ["Number", "69"], ["Gradient", "43"], ["Grid", "6"], ["Effect", "5"]];
-  const visibleGroups = groups
-    .filter(([name]) => selectedGroup === "All tokens" || name === selectedGroup)
-    .filter(([name]) => name.toLowerCase().includes(query.toLowerCase()));
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const lib = parseTokenLibrary(parsed, file.name);
+      setLibrary(lib);
+      setSelectedGroup("All tokens");
+      pushToast("success", `Imported ${lib.total.toLocaleString()} tokens from ${file.name}`);
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "Could not parse token JSON. Check the file format.");
+    }
+  };
+
+  const visibleGroups = library.groups
+    .filter((g) => selectedGroup === "All tokens" || g.name === selectedGroup)
+    .filter((g) => g.name.toLowerCase().includes(query.toLowerCase()));
+
   return (
     <div className="studio-page">
       <StudioHeader
@@ -540,21 +573,21 @@ function Tokens() {
         action={
           <label className="primary-button upload-button">
             <Icon name="upload" />Import JSON
-            <input type="file" accept=".json" onChange={(e) => { if (e.target.files?.[0]) setFileName(e.target.files[0].name) }} hidden />
+            <input type="file" accept=".json" onChange={handleImport} hidden />
           </label>
         }
       />
       <section className="token-summary">
-        <article><span>Active source</span><h2>{fileName}</h2><p>Figma Design Tokens format</p><em className="status published">Published</em></article>
-        <article><span>Total tokens</span><strong>2,711</strong><p>Across 9 collections</p></article>
-        <article><span>References</span><strong>840</strong><p>345 unique references</p></article>
-        <article><span>Descriptions</span><strong>21</strong><p>2,690 still need guidance</p></article>
+        <article><span>Active source</span><h2>{library.fileName}</h2><p>Figma Design Tokens format</p><em className="status published">Published</em></article>
+        <article><span>Total tokens</span><strong>{library.total.toLocaleString()}</strong><p>Across {library.groups.length} collections</p></article>
+        <article><span>References</span><strong>{library.references.toLocaleString()}</strong><p>{library.uniqueReferences} unique references</p></article>
+        <article><span>Descriptions</span><strong>{library.withDescription.toLocaleString()}</strong><p>{(library.total - library.withDescription).toLocaleString()} still need guidance</p></article>
       </section>
       <div className="token-workspace">
         <aside>
-           <button className={selectedGroup === "All tokens" ? "active" : ""} onClick={() => setSelectedGroup("All tokens")}>All tokens <span>2,711</span></button>
-           {["Core", "Alias", "Element", "Color", "Typography", "Gradient", "Grid", "Effect"].map((g) => (
-             <button key={g} className={selectedGroup === g ? "active" : ""} onClick={() => setSelectedGroup(g)}>{g}<Icon name="chevron" /></button>
+           <button className={selectedGroup === "All tokens" ? "active" : ""} onClick={() => setSelectedGroup("All tokens")}>All tokens <span>{library.total.toLocaleString()}</span></button>
+           {library.groups.slice(0, 8).map((g) => (
+             <button key={g.name} className={selectedGroup === g.name ? "active" : ""} onClick={() => setSelectedGroup(g.name)}>{g.name}<Icon name="chevron" /></button>
            ))}
         </aside>
         <section>
@@ -566,13 +599,13 @@ function Tokens() {
              <span className="muted-note">{selectedGroup}</span>
            </div>
            <div className="token-group-grid">
-             {visibleGroups.map(([n, c]) => (
-              <article key={n}>
-                <div className={`token-preview token-${n.toLowerCase().replace(" ", "-")}`}>{n.slice(0, 2)}</div>
-                <h3>{n}</h3>
-                <strong>{c}</strong>
+             {visibleGroups.map((g) => (
+              <article key={g.name}>
+                <div className={`token-preview token-${g.name.toLowerCase().replace(/\s+/g, "-")}`}>{g.name.slice(0, 2)}</div>
+                <h3>{g.name}</h3>
+                <strong>{g.count.toLocaleString()}</strong>
                 <p>tokens available</p>
-                 <button onClick={() => setSelectedGroup(n)}>Explore <Icon name="arrow" /></button>
+                 <button onClick={() => setSelectedGroup(g.name)}>Explore <Icon name="arrow" /></button>
                </article>
              ))}
              {!visibleGroups.length && <div className="empty-panel"><Icon name="search" /><h2>No token groups found</h2><p>Try a different token group or clear the search.</p></div>}
@@ -679,6 +712,7 @@ function Settings({ app }: { app: AppContext }) {
   const [settings, setSettings] = useState(app.data.settings);
   const [portalConfig, setPortalConfig] = useState(formatPortalConfig(app.data.settings.portal));
   const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState("General");
   const save = async () => {
     setSaving(true);
     try {
@@ -698,28 +732,35 @@ function Settings({ app }: { app: AppContext }) {
       <StudioHeader eyebrow="Settings" title="Portal settings" />
       <div className="settings-layout">
         <aside aria-label="Settings sections">
-          {["General", "Branding", "Navigation", "Templates", "Administrator", "Visibility", "Backup & export", "Audit log"].map((x, i) => (
-            <button className={i === 0 ? "active" : ""} key={x}>{x}</button>
+          {["General", "Branding", "Navigation", "Templates", "Administrator", "Visibility", "Backup & export", "Audit log"].map((x) => (
+            <button className={activeSection === x ? "active" : ""} key={x} onClick={() => setActiveSection(x)}>{x}</button>
           ))}
         </aside>
         <section>
-          <h2>General</h2>
-          <p>Set the identity that appears across the portal.</p>
-          <div className="properties-form">
-            <label>Design system name<input value={settings.name} onChange={(e) => setSettings({ ...settings, name: e.target.value })} /></label>
-            <label>Hero statement<input value={settings.tagline} onChange={(e) => setSettings({ ...settings, tagline: e.target.value })} /></label>
-            <label>Description<textarea rows={5} value={settings.description} onChange={(e) => setSettings({ ...settings, description: e.target.value })} /></label>
-            <label>SEO title<input value={settings.seo?.title ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: e.target.value, description: settings.seo?.description ?? "" } })} /></label>
-            <label>SEO description<textarea rows={3} value={settings.seo?.description ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: settings.seo?.title ?? "", description: e.target.value } })} /></label>
-            <label>Portal content configuration<textarea rows={18} value={portalConfig} onChange={(e) => setPortalConfig(e.target.value)} placeholder="Paste the JSON configuration for navigation, landing content, collections, resources, footer, and public copy." /></label>
-            <label>Portal visibility
-              <select value={settings.visibility} onChange={(e) => setSettings({ ...settings, visibility: e.target.value as "public" | "unlisted" })}>
-                <option value="unlisted">Unlisted — no login, no search indexing</option>
-                <option value="public">Public</option>
-              </select>
-            </label>
-            <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save changes"}</button>
-          </div>
+          <h2>{activeSection}</h2>
+          {activeSection === "General" && (
+            <>
+              <p>Set the identity that appears across the portal.</p>
+              <div className="properties-form">
+                <label>Design system name<input value={settings.name} onChange={(e) => setSettings({ ...settings, name: e.target.value })} /></label>
+                <label>Hero statement<input value={settings.tagline} onChange={(e) => setSettings({ ...settings, tagline: e.target.value })} /></label>
+                <label>Description<textarea rows={5} value={settings.description} onChange={(e) => setSettings({ ...settings, description: e.target.value })} /></label>
+                <label>SEO title<input value={settings.seo?.title ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: e.target.value, description: settings.seo?.description ?? "" } })} /></label>
+                <label>SEO description<textarea rows={3} value={settings.seo?.description ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: settings.seo?.title ?? "", description: e.target.value } })} /></label>
+                <label>Portal content configuration<textarea rows={18} value={portalConfig} onChange={(e) => setPortalConfig(e.target.value)} placeholder="Paste the JSON configuration for navigation, landing content, collections, resources, footer, and public copy." /></label>
+                <label>Portal visibility
+                  <select value={settings.visibility} onChange={(e) => setSettings({ ...settings, visibility: e.target.value as "public" | "unlisted" })}>
+                    <option value="unlisted">Unlisted — no login, no search indexing</option>
+                    <option value="public">Public</option>
+                  </select>
+                </label>
+                <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save changes"}</button>
+              </div>
+            </>
+          )}
+          {activeSection !== "General" && (
+            <p className="muted-note">{activeSection} configuration will be available in a future update.</p>
+          )}
         </section>
       </div>
     </div>
