@@ -15,10 +15,7 @@ import type { Asset, AssetType } from "@/types/content";
 
 type AssetsManagerProps = { app: AppContext };
 
-const CATEGORY_TABS: { slug: "all" | AssetType; label: string }[] = [
-  { slug: "all", label: "All" },
-  ...ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label })),
-];
+const CATEGORY_TABS: { slug: "all" | AssetType; label: string }[] = ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label }));
 
 export function AssetsManager({ app }: AssetsManagerProps) {
   const [type, setType] = useState<"all" | AssetType>("all");
