@@ -396,15 +396,13 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const [brand, setBrand] = useState<(typeof BRANDS)[number]>("All");
   const [selected, setSelected] = useState<Asset | null>(null);
 
-  const active: Asset["type"] | "all" = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : "all";
-  const config = active === "all" ? null : ASSET_CATEGORY_MAP[active];
+  const active: Asset["type"] = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : ASSET_CATEGORIES[0].slug;
+  const config = ASSET_CATEGORY_MAP[active];
   const showBrand = config?.showBrandFilter ?? false;
-   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-   const isVisual = config?.visual ?? true;
 
   const lower = query.toLowerCase();
   const publishedAssets = app.data.assets.filter((a) => a.status === "published");
-  const categoryAssets = active === "all" ? publishedAssets : publishedAssets.filter((a) => a.type === active);
+  const categoryAssets = publishedAssets.filter((a) => a.type === active);
   const assets = categoryAssets.filter((a) =>
      a.status === "published" &&
      (brand === "All" || a.brand === brand) &&
@@ -415,8 +413,8 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
     <div className="asset-page">
       <section className="asset-hero">
         <span className="eyebrow">Asset Library</span>
-        <h1>{config ? config.label : "Find the right asset."}</h1>
-        <p>{config ? config.description : "Icons, icon illustrations, illustrations, logos, and resources in one place."}</p>
+        <h1>{config.label}</h1>
+        <p>{config.description}</p>
       </section>
       <div className="asset-toolbar">
         <label className="search-field">
@@ -424,7 +422,6 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search assets..." aria-label="Search assets" />
         </label>
         <div className="type-tabs" role="tablist" aria-label="Asset categories">
-          <button role="tab" aria-selected={active === "all"} className={active === "all" ? "active" : ""} onClick={() => app.navigate("/resources/assets")}>All</button>
           {ASSET_CATEGORIES.map((c) => (
             <button key={c.slug} role="tab" aria-selected={active === c.slug} className={active === c.slug ? "active" : ""} onClick={() => app.navigate(`/resources/assets/${c.slug}`)}>{c.label}</button>
           ))}
@@ -442,9 +439,9 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
       {assets.length === 0 ? (
         <div className="empty-state">
            <Icon name="search" />
-           <h2>{categoryAssets.length === 0 ? (config ? "No assets in this category yet" : "No published assets yet") : "No matching assets"}</h2>
+           <h2>{categoryAssets.length === 0 ? "No assets in this category yet" : "No matching assets"}</h2>
            <p>{categoryAssets.length === 0
-             ? (config ? "Published assets for this category will appear here." : "Published assets will appear here when they are ready to use.")
+             ? "Published assets for this category will appear here."
              : "Try a different word or clear the filters."}</p>
         </div>
       ) : (
