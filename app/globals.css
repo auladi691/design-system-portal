@@ -104,6 +104,86 @@
   .resource-grid{grid-template-columns:1fr;gap:14px}
 }
 
+/* Search results layout */
+.search-results > div:not(.search-field){
+  display:flex;
+  flex-direction:column;
+  margin-top:16px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+.search-results > div:not(.search-field) > button{
+  display:grid;
+  grid-template-columns:110px minmax(0,1fr) 20px;
+  grid-template-rows:auto auto;
+  align-items:center;
+  column-gap:16px;
+  width:100%;
+  min-height:76px;
+  padding:14px 16px;
+  border:0;
+  border-bottom:1px solid var(--border);
+  background:var(--surface);
+  text-align:left;
+  cursor:pointer;
+}
+.search-results > div:not(.search-field) > button:last-child{border-bottom:0}
+.search-results > div:not(.search-field) > button:hover{background:var(--surface-2)}
+.search-results > div:not(.search-field) > button > span{
+  grid-row:1 / -1;
+  min-width:0;
+  overflow:hidden;
+  color:var(--text-3);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  line-height:1.3;
+  text-transform:uppercase;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-results > div:not(.search-field) > button > strong{
+  min-width:0;
+  overflow:hidden;
+  font-size:15px;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-results > div:not(.search-field) > button > p{
+  min-width:0;
+  margin:3px 0 0;
+  overflow:hidden;
+  color:var(--text-2);
+  font-size:13px;
+  line-height:1.4;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-results > div:not(.search-field) > button > svg{
+  grid-column:3;
+  grid-row:1 / -1;
+  width:18px;
+  color:var(--text-3);
+}
+.search-results > div:not(.search-field) > button:hover > svg{transform:translateX(3px);color:var(--text)}
+.search-dialog .search-results > div:not(.search-field){margin-top:16px}
+.no-results{margin:0;padding:28px 20px;text-align:center}
+@media(max-width:700px){
+  .search-results > div:not(.search-field) > button{
+    grid-template-columns:1fr 20px;
+    grid-template-rows:auto auto auto;
+    row-gap:3px;
+    min-height:0;
+    padding:14px;
+  }
+  .search-results > div:not(.search-field) > button > span{grid-column:1;grid-row:1}
+  .search-results > div:not(.search-field) > button > strong{grid-column:1;grid-row:2}
+  .search-results > div:not(.search-field) > button > p{grid-column:1;grid-row:3}
+  .search-results > div:not(.search-field) > button > svg{grid-column:2;grid-row:1 / -1}
+}
+
 /* Portal loading is a transient status, not an empty content state. */
 .loading-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:180px;padding:40px 20px;color:var(--text-2);font-size:14px}
 .loading-state p{margin:0}
