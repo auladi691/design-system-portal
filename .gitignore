@@ -42,3 +42,9 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# local verification artifacts (not part of product)
+browser-final.mjs
+final-browser-verification.mjs
+AGENTS_PROGRESS.md
+SESSION_MEMORY.md
