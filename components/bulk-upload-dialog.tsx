@@ -28,7 +28,7 @@ type BulkUploadDialogProps = {
   initialDestination: BulkUploadDestination;
   existingSlugs: string[];
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (uploaded?: import("@/types/content").Asset[]) => void;
 };
 
 const BRANDS: AssetBrand[] = ["Shared", "IM3", "Indosat", "Tri", "Partner"];
@@ -232,6 +232,7 @@ export function BulkUploadDialog({
       setItems((current) => {
         const failed = current.filter((item) => item.error);
         const succeeded = current.filter((item) => item.done);
+        const uploadedAssets = succeeded.map((s) => s.result).filter(Boolean) as import("@/types/content").Asset[];
         // Defer toasts to avoid updating ToastRegion while rendering BulkUploadDialog
         setTimeout(() => {
           if (!failed.length && succeeded.length) {
@@ -241,12 +242,13 @@ export function BulkUploadDialog({
           } else if (failed.length) {
             pushToast("error", "Some files could not be uploaded. Review the list and try again.");
           }
+          onComplete(uploadedAssets);
         }, 0);
         return current;
       });
-      onComplete();
     }, 0);
-  }, [items, shared.publishAfterUpload, updateItem, onComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shared.publishAfterUpload, updateItem, onComplete]);
 
   const cancelItem = useCallback(
     (id: string) => {

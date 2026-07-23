@@ -35,27 +35,37 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   const [confirmSingleDelete, setConfirmSingleDelete] = useState<Asset | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [localAssets, setLocalAssets] = useState<Asset[]>([]);
 
   const isInternalView = activeView === "component-preview";
   const lower = query.toLowerCase();
 
+  const allAssets = useMemo(() => {
+    // Merge server assets with locally uploaded assets for preview mode (Supabase not configured)
+    const merged = [...app.data.assets];
+    for (const la of localAssets) {
+      if (!merged.some((a) => a.id === la.id)) merged.push(la);
+    }
+    return merged;
+  }, [app.data.assets, localAssets]);
+
   const list = useMemo(() => {
     if (isInternalView) {
-      return app.data.assets.filter((a) => {
+      return allAssets.filter((a) => {
         const isInternal = a.purpose === "component-preview" || a.visibility === "internal";
         if (!isInternal) return false;
         if (purposeFilter !== "all" && a.purpose !== purposeFilter) return false;
         return `${a.name} ${a.category} ${a.brand} ${a.purpose} ${a.keywords.join(" ")}`.toLowerCase().includes(lower);
       });
     }
-    return app.data.assets.filter((a) => {
+    return allAssets.filter((a) => {
       if (a.type !== activeView) return false;
       if (purposeFilter !== "all" && a.purpose !== purposeFilter) return false;
       return `${a.name} ${a.category} ${a.brand} ${a.purpose} ${a.keywords.join(" ")}`.toLowerCase().includes(lower);
     });
-  }, [app.data.assets, activeView, isInternalView, lower, purposeFilter]);
+  }, [allAssets, activeView, isInternalView, lower, purposeFilter]);
 
-  const existingSlugs = useMemo(() => app.data.assets.map((a) => a.slug), [app.data.assets]);
+  const existingSlugs = useMemo(() => allAssets.map((a) => a.slug), [allAssets]);
 
   const toggleSelection = (id: string) => {
     setSelection((current) => {
@@ -247,9 +257,8 @@ export function AssetsManager({ app }: AssetsManagerProps) {
     }
   };
 
-  const publicCounts = (slug: string) =>
-    app.data.assets.filter((a) => (a as { type: string }).type === slug).length;
-  const internalCount = app.data.assets.filter((a) => a.purpose === "component-preview" || a.visibility === "internal").length;
+  const publicCounts = (slug: string) => allAssets.filter((a) => (a as { type: string }).type === slug).length;
+  const internalCount = allAssets.filter((a) => a.purpose === "component-preview" || a.visibility === "internal").length;
 
   return (
     <div className="studio-page">
@@ -427,7 +436,21 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         initialDestination={bulkDestination}
         existingSlugs={existingSlugs}
         onClose={() => setBulkOpen(false)}
-        onComplete={() => void app.reload()}
+        onComplete={(uploaded) => {
+          if (uploaded && uploaded.length) {
+            // Keep local copy for preview mode (Supabase not configured) and instant feedback
+            setLocalAssets((prev) => {
+              const merged = [...prev];
+              for (const up of uploaded) {
+                if (!merged.some((a) => a.id === up.id) && !app.data.assets.some((a) => a.id === up.id)) {
+                  merged.push(up);
+                }
+              }
+              return merged;
+            });
+          }
+          void app.reload();
+        }}
       />
 
       <ConfirmDialog
