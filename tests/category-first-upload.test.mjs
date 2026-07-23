@@ -134,11 +134,15 @@ test("component previews as internal Studio collection, not public", async () =>
   assert.match(repo, /collectReferencedAssetIds/);
   assert.match(repo, /referencedSet\.has/);
 
-  // Requirement 13: not classified as Icons, Illustrations, Downloads
+  // Requirement 13: not classified as Icons, Illustrations, Downloads as public categories
   assert.match(categories, /export const ASSET_CATEGORIES/);
   const assetCatBlock = categories.match(/export const ASSET_CATEGORIES[\s\S]*?^\];/m);
   if (assetCatBlock) {
     assert.doesNotMatch(assetCatBlock[0], /component-preview/);
+    assert.equal((assetCatBlock[0].match(/slug: "/g) || []).length, 7, "Public ASSET_CATEGORIES must be 7");
   }
-  assert.doesNotMatch(await readProjectFile("types/content.ts"), /AssetType.*component-preview/);
+  const typesFile = await readProjectFile("types/content.ts");
+  // InternalAssetType component-preview allowed, but public categories remain 7
+  assert.match(typesFile, /PUBLIC_ASSET_TYPES|PublicAssetType/);
+  assert.match(typesFile, /InternalAssetType.*component-preview/);
 });

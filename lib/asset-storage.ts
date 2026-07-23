@@ -9,6 +9,8 @@ export type StoredFile = {
   originalFileName: string;
 };
 
+export const INTERNAL_COMPONENT_PREVIEW_PREFIX = "internal/component-preview";
+
 export function sanitizeFileName(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "");
   const safe = base || "file";
@@ -26,14 +28,32 @@ export function buildStoragePath(type: AssetType, file: File): string {
   return `${type}/${year}/${month}/${uuid}-${safe}`;
 }
 
+export function buildInternalComponentPreviewPath(file: File): string {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const uuid = crypto.randomUUID();
+  const safe = sanitizeFileName(file.name);
+  // Canonical path per spec: internal/component-preview/YYYY/MM/uuid-filename
+  return `${INTERNAL_COMPONENT_PREVIEW_PREFIX}/${year}/${month}/${uuid}-${safe}`;
+}
+
+export function buildStoragePathForDestination(
+  destination: string,
+  file: File,
+): string {
+  if (destination === "component-preview") {
+    return buildInternalComponentPreviewPath(file);
+  }
+  return buildStoragePath(destination as AssetType, file);
+}
+
 function mimeForUpload(file: File): string {
   const raw = file.type?.trim();
   if (raw) {
-    // Keep original but strip charset param for storage content-type
     const base = raw.split(";")[0]?.trim();
     if (base) return base;
   }
-  // Fallback guess from extension
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {
     svg: "image/svg+xml",
@@ -50,15 +70,15 @@ function mimeForUpload(file: File): string {
   return map[ext] ?? "application/octet-stream";
 }
 
-export async function uploadAssetFile(
-  type: AssetType,
+export async function uploadAssetFileForDestination(
+  destination: string,
   file: File,
 ): Promise<StoredFile> {
   const client = getSupabase();
   if (!client) {
     throw new Error("Storage is not configured. Connect Supabase before uploading files.");
   }
-  const path = buildStoragePath(type, file);
+  const path = buildStoragePathForDestination(destination, file);
   const contentType = mimeForUpload(file);
   const { error } = await client.storage
     .from(STORAGE_BUCKET)
@@ -68,7 +88,6 @@ export async function uploadAssetFile(
       contentType,
     });
   if (error) {
-    // Surface RLS / JWT errors as friendly but keep detail for debugging
     const msg = error.message || "";
     if (/row.*security|policy|permission|not.*allowed/i.test(msg)) {
       throw new Error(`Storage upload blocked by policy: ${msg} — sign in as administrator and check Storage RLS.`);
@@ -94,6 +113,13 @@ export async function uploadAssetFile(
     size: file.size,
     originalFileName: file.name,
   };
+}
+
+export async function uploadAssetFile(
+  type: AssetType,
+  file: File,
+): Promise<StoredFile> {
+  return uploadAssetFileForDestination(type, file);
 }
 
 export async function deleteStoragePath(path: string): Promise<boolean> {

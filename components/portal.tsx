@@ -63,9 +63,8 @@ export function Portal({ app }: { app: AppContext }) {
     const type = root === "foundations" ? "foundation" : "component";
     content = slug ? (page?.type === type ? <DocPage page={page} app={app} /> : <NotFound app={app} />) : <Collection type={type} app={app} />;
   } else if (root === "resources" && parts[1] === "assets") {
-    content = parts.length > 3 || (parts[2] && !ASSET_CATEGORY_MAP[parts[2] as Asset["type"]])
-      ? <NotFound app={app} />
-      : <AssetExplorer app={app} type={parts[2]} />;
+    const assetCat = parts[2] ? (ASSET_CATEGORY_MAP as Record<string, unknown>)[parts[2]] : true;
+    content = parts.length > 3 || (parts[2] && !assetCat) ? <NotFound app={app} /> : <AssetExplorer app={app} type={parts[2]} />;
   } else if (root === "resources") {
     content = slug && parts.length === 2 ? (page?.type === "resource" ? <DocPage page={page} app={app} /> : <NotFound app={app} />) : slug ? <NotFound app={app} /> : <Resources app={app} />;
   } else if (root === "changelog" && parts.length === 1) content = <Changelog app={app} />;
@@ -437,7 +436,9 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const [purpose, setPurpose] = useState<"all" | Exclude<Asset["purpose"], "component-preview">>("all");
   const [selected, setSelected] = useState<Asset | null>(null);
 
-  const active: Asset["type"] = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : ASSET_CATEGORIES[0].slug;
+  const active = (
+    slugType && (ASSET_CATEGORY_MAP as Record<string, unknown>)[slugType] ? slugType : ASSET_CATEGORIES[0].slug
+  ) as keyof typeof ASSET_CATEGORY_MAP;
   const config = ASSET_CATEGORY_MAP[active];
   const showBrand = config?.showBrandFilter ?? false;
 

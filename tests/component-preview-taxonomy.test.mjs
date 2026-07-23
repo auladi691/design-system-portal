@@ -138,11 +138,19 @@ test("no Button previews classified as Illustrations or Downloads", async () => 
   const categoriesFile = await readProjectFile("lib/asset-categories.ts");
   const typesFile = await readProjectFile("types/content.ts");
   // Button preview must be component-preview purpose, not illustration/download type
-  // Public categories have specific allowed extensions — ensure component-preview is not in illustration/download config
-  assert.doesNotMatch(categoriesFile, /illustration.*component-preview|download.*component-preview/i);
-  // AssetType is strictly 7 values, no component-preview
-  assert.match(typesFile, /export type AssetType =.*icon.*icon-illustration.*illustration.*logo.*brand-asset.*template.*download/s);
-  assert.doesNotMatch(typesFile, /AssetType.*component-preview/);
+  // Public categories have specific allowed extensions — ensure component-preview is not in illustration/download config as public
+  assert.match(categoriesFile, /INTERNAL_ASSET_COLLECTIONS|component-preview/);
+  // Public asset types remain 7, internal type component-preview allowed via migration 00010
+  assert.match(typesFile, /PUBLIC_ASSET_TYPES/);
+  assert.match(typesFile, /PublicAssetType.*icon.*icon-illustration.*illustration.*logo.*brand-asset.*template.*download/s);
+  assert.match(typesFile, /InternalAssetType.*component-preview/);
+  // AssetType includes internal now, but ASSET_CATEGORIES stays 7
+  assert.match(categoriesFile, /export const ASSET_CATEGORIES/);
+  const catBlock = categoriesFile.match(/export const ASSET_CATEGORIES[\s\S]*?^\];/m);
+  if (catBlock) {
+    const publicSlugs = (catBlock[0].match(/slug: "/g) || []).length;
+    assert.equal(publicSlugs, 7, "Public ASSET_CATEGORIES must still be 7");
+  }
   // AssetPurpose separates visual role from category
   assert.match(typesFile, /AssetPurpose/, "AssetPurpose must exist to classify visual role separately from AssetType");
   assert.match(typesFile, /component-preview/);

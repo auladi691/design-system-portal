@@ -87,12 +87,13 @@ test("published-only and safe route rules are present", async () => {
   assert.match(schema, /status = 'published' or public\.is_administrator\(\)/);
   assert.match(schema, /values \('design-system-assets','design-system-assets',false\)/);
   assert.match(repository, /createSignedUrl/);
-  assert.match(bulkUpload, /uploadAssetFile\(item\.type, item\.file\)/);
+  assert.match(bulkUpload, /uploadAssetFileForDestination|uploadAssetFile\(item\.type, item\.file\)/);
   assert.match(bulkUpload, /type: item\.type|destination|BulkUploadDestination/);
   assert.match(bulkUpload, /glyphFor\(item\.type, item\.name\)/);
   assert.match(bulkUpload, /id: crypto\.randomUUID\(\)/);
-  // Category-first upload workflow
+  // Category-first upload workflow + canonical internal path
   assert.match(bulkUpload, /isInternalDestination|storageTypeForDestination|component-preview/);
+  assert.match(bulkUpload, /internal\/component-preview|buildInternalComponentPreviewPath|buildStoragePathForDestination/);
   assert.match(studio, /const id = crypto\.randomUUID\(\)/);
   // Template picker now drives new page flow — open article link with window still present in Figma Resource CTA
   assert.match(studio, /makePageFromTemplate|TemplatePicker/);

@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDialogFocus } from "@/components/dialog-focus";
-import { ASSET_CATEGORIES, formatFileSize } from "@/lib/asset-categories";
-import { deleteStoragePath, uploadAssetFile } from "@/lib/asset-storage";
+import { ASSET_CATEGORIES, INTERNAL_ASSET_COLLECTIONS, formatFileSize } from "@/lib/asset-categories";
+import { deleteStoragePath, uploadAssetFileForDestination } from "@/lib/asset-storage";
 import { validatePublish } from "@/lib/asset-validation";
 import { friendlyErrorMessage } from "@/lib/repository";
 import { pushToast } from "@/lib/toast";
@@ -25,9 +25,10 @@ type AssetEditorProps = {
   app: AppContext;
   close: () => void;
   onDelete?: (asset: Asset) => void;
+  onReplace?: (asset: Asset, file: File) => Promise<void>;
 };
 
-export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
+export function AssetEditor({ asset, app, close, onDelete, onReplace }: AssetEditorProps) {
   const [item, setItem] = useState<Asset>(asset);
   const [lastAssetId, setLastAssetId] = useState(asset.id);
   const [saving, setSaving] = useState(false);
@@ -56,9 +57,24 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
   };
 
   const handleReplaceFile = async (file: File) => {
+    if (onReplace) {
+      setReplacing(true);
+      try {
+        await onReplace(item, file);
+        // Parent will handle toast and reload; refresh local state from parent via props
+        setItem((prev) => ({ ...prev }));
+      } catch (error) {
+        pushToast("error", error instanceof Error ? error.message : "We couldn't replace this file.");
+      } finally {
+        setReplacing(false);
+      }
+      return;
+    }
     setReplacing(true);
     try {
-      const stored = await uploadAssetFile(item.type, file);
+      const isInternal = item.purpose === "component-preview" && item.visibility === "internal";
+      const destination = isInternal ? "component-preview" : item.type;
+      const stored = await uploadAssetFileForDestination(destination, file);
       const previousPath = item.filePath;
       const next: Asset = {
         ...item,
@@ -75,9 +91,9 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
         pushToast("error", "We couldn't save the new file. The original file is kept.");
         return;
       }
-       if (previousPath && previousPath !== stored.path) {
-         const previousDeleted = await deleteStoragePath(previousPath);
-         if (!previousDeleted) pushToast("warning", "The replacement was saved, but the original file could not be removed.");
+      if (previousPath && previousPath !== stored.path) {
+        const previousDeleted = await deleteStoragePath(previousPath);
+        if (!previousDeleted) pushToast("warning", "The replacement was saved, but the original file could not be removed.");
       }
       setItem(next);
       pushToast("success", "Replacement file saved. All usages now show the new file.");
@@ -172,7 +188,16 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
           <label>Slug<input value={item.slug} onChange={(e) => update({ slug: e.target.value })} /></label>
           <label>Type
             <select value={item.type} onChange={(e) => update({ type: e.target.value as AssetType })}>
-              {ASSET_CATEGORIES.map((c) => <option key={c.slug} value={c.slug}>{c.label}</option>)}
+              {ASSET_CATEGORIES.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.label}
+                </option>
+              ))}
+              {INTERNAL_ASSET_COLLECTIONS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label} (internal)
+                </option>
+              ))}
             </select>
           </label>
           <label>Category<input value={item.category} onChange={(e) => update({ category: e.target.value })} /></label>

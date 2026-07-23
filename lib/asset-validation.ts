@@ -1,5 +1,5 @@
 import { ASSET_CATEGORY_MAP, INTERNAL_COLLECTION_MAP } from "@/lib/asset-categories";
-import type { AssetType } from "@/types/content";
+import type { AssetType, PublicAssetType } from "@/types/content";
 import type { BulkUploadDestination } from "@/lib/bulk-upload";
 
 export type ValidationResult = {
@@ -22,7 +22,7 @@ function getConfigForDestination(destination: BulkUploadDestination | AssetType)
       maxSizeBytes: number;
     };
   }
-  return ASSET_CATEGORY_MAP[destination as AssetType];
+  return ASSET_CATEGORY_MAP[destination as PublicAssetType];
 }
 
 function normalizeMime(raw: string | null | undefined): string | null {
@@ -58,7 +58,7 @@ export function validateAssetFile(
 
   const rawMime = file.type || guessMimeFromExtension(ext) || "";
   const detectedMime = normalizeMime(rawMime);
-  const allowedNormalized = config.allowedMimeTypes.map((m) => normalizeMime(m) ?? m.toLowerCase());
+  const allowedNormalized = config.allowedMimeTypes.map((m: string) => normalizeMime(m) ?? m.toLowerCase());
   // If we have a detected mime, check normalized list; allow empty mime (fallback to extension already checked)
   if (detectedMime && !allowedNormalized.includes(detectedMime)) {
     // For SVG family, be permissive if extension is svg and detected is something svg-like

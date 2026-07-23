@@ -1,6 +1,18 @@
 export type PageType = "design" | "foundation" | "component" | "pattern" | "resource";
 export type PageStatus = "draft" | "published" | "archived";
-export type AssetType = "icon" | "icon-illustration" | "illustration" | "logo" | "brand-asset" | "template" | "download";
+export type PublicAssetType = "icon" | "icon-illustration" | "illustration" | "logo" | "brand-asset" | "template" | "download";
+export type InternalAssetType = "component-preview";
+export type AssetType = PublicAssetType | InternalAssetType;
+
+export const PUBLIC_ASSET_TYPES: PublicAssetType[] = [
+  "icon",
+  "icon-illustration",
+  "illustration",
+  "logo",
+  "brand-asset",
+  "template",
+  "download",
+];
 export type AssetBrand = "Shared" | "IM3" | "Indosat" | "Tri" | "Partner";
 export type AssetPurpose =
   | "component-preview"

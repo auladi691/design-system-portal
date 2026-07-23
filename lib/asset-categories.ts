@@ -1,4 +1,4 @@
-import type { AssetCategoryConfig, AssetType } from "@/types/content";
+import type { AssetCategoryConfig, AssetType, PublicAssetType } from "@/types/content";
 
 const MB = 1024 * 1024;
 
@@ -113,13 +113,16 @@ export const ASSET_CATEGORIES: AssetCategoryConfig[] = [
   },
 ];
 
-export const ASSET_CATEGORY_MAP: Record<AssetType, AssetCategoryConfig> = ASSET_CATEGORIES.reduce(
+// Public categories only — 7 entries. Internal collections are separate.
+export const ASSET_CATEGORY_MAP: Record<PublicAssetType, AssetCategoryConfig> = ASSET_CATEGORIES.reduce(
   (acc, config) => {
-    acc[config.slug] = config;
+    acc[config.slug as PublicAssetType] = config;
     return acc;
   },
-  {} as Record<AssetType, AssetCategoryConfig>,
+  {} as Record<PublicAssetType, AssetCategoryConfig>,
 );
+
+export const PUBLIC_ASSET_CATEGORY_SLUGS: PublicAssetType[] = ASSET_CATEGORIES.map((c) => c.slug as PublicAssetType);
 
 export type InternalAssetCollectionId = "component-preview";
 
@@ -165,6 +168,9 @@ export function getInternalCollectionConfig(id: string): InternalAssetCollection
 }
 
 export function uploadLabelForCategory(slug: AssetType | InternalAssetCollectionId): string {
+  if (slug === "component-preview") {
+    return INTERNAL_COLLECTION_MAP["component-preview"].uploadLabel;
+  }
   if ((INTERNAL_COLLECTION_MAP as Record<string, InternalAssetCollectionConfig>)[slug]) {
     return INTERNAL_COLLECTION_MAP[slug as InternalAssetCollectionId].uploadLabel;
   }
@@ -176,25 +182,37 @@ export function uploadLabelForCategory(slug: AssetType | InternalAssetCollection
     "brand-asset": "Upload brand assets",
     template: "Upload templates",
     download: "Upload downloads",
+    "component-preview": "Upload component previews",
   };
   return map[slug] ?? `Upload ${slug}`;
 }
 
 export function uploadTitleForCategory(slug: AssetType | InternalAssetCollectionId): string {
+  if (slug === "component-preview") {
+    return INTERNAL_COLLECTION_MAP["component-preview"].uploadTitle;
+  }
   if ((INTERNAL_COLLECTION_MAP as Record<string, InternalAssetCollectionConfig>)[slug]) {
     return INTERNAL_COLLECTION_MAP[slug as InternalAssetCollectionId].uploadTitle;
   }
-  const entry = ASSET_CATEGORY_MAP[slug as AssetType];
+  const entry = ASSET_CATEGORY_MAP[slug as PublicAssetType];
   if (entry) return `Uploading to ${entry.label}`;
   return `Uploading to ${slug}`;
 }
 
 export function getCategoryConfig(slug: string): AssetCategoryConfig | undefined {
-  return ASSET_CATEGORY_MAP[slug as AssetType];
+  if ((slug as string) === "component-preview") {
+    return undefined;
+  }
+  return ASSET_CATEGORY_MAP[slug as PublicAssetType];
 }
 
 export function categoryLabel(slug: string): string {
+  if (slug === "component-preview") return "Component previews";
   return getCategoryConfig(slug)?.label ?? slug;
+}
+
+export function isPublicAssetType(type: string): boolean {
+  return (PUBLIC_ASSET_CATEGORY_SLUGS as string[]).includes(type);
 }
 
 export function formatFileSize(bytes: number | null | undefined): string {

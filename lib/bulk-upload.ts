@@ -1,5 +1,5 @@
 import { ASSET_CATEGORY_MAP } from "@/lib/asset-categories";
-import { deleteStoragePath, uploadAssetFile } from "@/lib/asset-storage";
+import { deleteStoragePath, uploadAssetFileForDestination } from "@/lib/asset-storage";
 import { saveAsset } from "@/lib/repository";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { Asset, AssetType } from "@/types/content";
@@ -40,11 +40,9 @@ export function isInternalDestination(dest: BulkUploadDestination): boolean {
 }
 
 export function storageTypeForDestination(dest: BulkUploadDestination): AssetType {
-  // Storage bucket path requires AssetType; for internal we use download-safe visual type
-  // but preserve purpose+visibility internal. We store component-preview under icon-illustration path
-  // to keep allowed MIME validation consistent, but still map type to asset type rules.
-  // For simplicity: component-preview uses icon-illustration storage shape (svg/png/webp).
-  if (dest === "component-preview") return "icon-illustration";
+  // Canonical internal type per spec: component-preview has its own type, not fake public category
+  // Migration 00010 allows 'component-preview' type in DB constraint
+  if (dest === "component-preview") return "component-preview";
   return dest as AssetType;
 }
 
@@ -74,7 +72,8 @@ async function runWorker(
     onItemChange(item.id, { uploading: true, error: null, progress: 5 });
     try {
       onItemChange(item.id, { progress: 40 });
-      const stored = await uploadAssetFile(item.type, item.file);
+      // Use destination-based upload so internal/component-preview/YYYY/MM/uuid-... path is used
+      const stored = await uploadAssetFileForDestination(item.destination, item.file);
       onItemChange(item.id, { progress: 85 });
       const asset: Asset = {
         id: item.id,
@@ -138,7 +137,8 @@ export function makeItemFromFile(
   const slug = uniqueSlug(slugify(name), existingSlugs);
   const isInternal = isInternalDestination(destination);
   const type: AssetType = storageTypeForDestination(destination);
-  const config = ASSET_CATEGORY_MAP[type];
+  // For internal destination, type is component-preview which is not in public map — use generic category
+  const config = (ASSET_CATEGORY_MAP as Record<string, { label?: string } | undefined>)[type as string];
 
   return {
     id: crypto.randomUUID(),
@@ -147,7 +147,8 @@ export function makeItemFromFile(
     destination,
     name,
     slug,
-    category: isInternal ? "Component preview" : config ? defaultCategory(type) : "General",
+    // Per spec, avoid using internal id as category — use General
+    category: isInternal ? "General" : config ? defaultCategory(type as never) : "General",
     brand: "Shared",
     purpose: isInternal ? "component-preview" : "general-asset",
     visibility: isInternal ? "internal" : "public",
@@ -197,6 +198,8 @@ function defaultCategory(type: AssetType): string {
       return "UI template";
     case "download":
       return "Resource";
+    case "component-preview":
+      return "General";
   }
 }
 
