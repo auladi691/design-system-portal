@@ -106,7 +106,6 @@ export function BulkUploadDialog({
   const [shared, setShared] = useState<SharedMeta>(defaultSharedForDestination(initialDestination));
   const [running, setRunning] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [wasOpen, setWasOpen] = useState(open);
   const [showChangeDestination, setShowChangeDestination] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -119,17 +118,19 @@ export function BulkUploadDialog({
     : ASSET_CATEGORY_MAP[destination as keyof typeof ASSET_CATEGORY_MAP];
   const uploadTitle = uploadTitleForCategory(destination);
 
-  if (wasOpen !== open) {
-    setWasOpen(open);
-    if (open) {
-      setDestination(initialDestination);
-      setItems([]);
-      setShared(defaultSharedForDestination(initialDestination));
-      setRunning(false);
-      setDragActive(false);
-      setShowChangeDestination(false);
-    }
-  }
+  // Sync when dialog opens — avoid setState-in-render (wasOpen pattern) which triggers
+  // "Cannot update a component (ToastRegion) while rendering a different component"
+  // Reset is intentional when open changes to initialDestination — dialog controlled externally.
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset on open
+    setDestination(initialDestination);
+    setItems([]);
+    setShared(defaultSharedForDestination(initialDestination));
+    setRunning(false);
+    setDragActive(false);
+    setShowChangeDestination(false);
+  }, [open, initialDestination]);
 
   useEffect(() => {
     if (!open) return;
@@ -222,19 +223,29 @@ export function BulkUploadDialog({
     const pending = items.filter((item) => !item.done && !item.uploading && item.validationErrors.length === 0);
     await runBulkUpload(pending, shared.publishAfterUpload, updateItem);
     setRunning(false);
-    setItems((current) => {
-      const failed = current.filter((item) => item.error);
-      const succeeded = current.filter((item) => item.done);
-      if (!failed.length && succeeded.length) {
-        pushToast("success", `${succeeded.length} asset${succeeded.length === 1 ? "" : "s"} uploaded.`);
-      } else if (failed.length && succeeded.length) {
-        pushToast("warning", `${succeeded.length} uploaded, ${failed.length} failed. Review the list and retry.`);
-      } else if (failed.length) {
-        pushToast("error", "Some files could not be uploaded. Review the list and try again.");
-      }
-      return current;
-    });
-    onComplete();
+    // Compute toast outside setState updater — calling pushToast inside setItems updater
+    // would be setState-in-render for ToastRegion while rendering BulkUploadDialog
+    // Use current items snapshot after workers finished (state will have been updated via updateItem callbacks)
+    // Schedule toast and completion in next tick to avoid setState-in-render warning
+    setTimeout(() => {
+      // Re-read latest items via functional update without side effects
+      setItems((current) => {
+        const failed = current.filter((item) => item.error);
+        const succeeded = current.filter((item) => item.done);
+        // Defer toasts to avoid updating ToastRegion while rendering BulkUploadDialog
+        setTimeout(() => {
+          if (!failed.length && succeeded.length) {
+            pushToast("success", `${succeeded.length} asset${succeeded.length === 1 ? "" : "s"} uploaded.`);
+          } else if (failed.length && succeeded.length) {
+            pushToast("warning", `${succeeded.length} uploaded, ${failed.length} failed. Review the list and retry.`);
+          } else if (failed.length) {
+            pushToast("error", "Some files could not be uploaded. Review the list and try again.");
+          }
+        }, 0);
+        return current;
+      });
+      onComplete();
+    }, 0);
   }, [items, shared.publishAfterUpload, updateItem, onComplete]);
 
   const cancelItem = useCallback(
