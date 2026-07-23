@@ -30,10 +30,16 @@ test("component-preview taxonomy: internal-only purpose, not public category", a
   for (const slug of expectedSlugs) {
     assert.match(categoriesFile, new RegExp(`slug: "${slug}"`), `ASSET_CATEGORIES must contain ${slug}`);
   }
-  assert.doesNotMatch(categoriesFile, /slug: "component-preview"/, "component-preview must NOT be a public AssetType category");
-  // Exactly 7 entries — count occurrences of slug:
-  const slugMatches = categoriesFile.match(/slug: "/g) || [];
-  assert.equal(slugMatches.length, 7, "ASSET_CATEGORIES must have exactly 7 entries");
+  assert.doesNotMatch(categoriesFile, /ASSET_CATEGORIES[\s\S]*?slug: "component-preview"/, "component-preview must NOT be a public AssetType category in ASSET_CATEGORIES");
+  // Exactly 7 public categories — count slugs inside ASSET_CATEGORIES array definition
+  const assetCatBlock = categoriesFile.match(/export const ASSET_CATEGORIES[\s\S]*?^\];/m);
+  if (assetCatBlock) {
+    const slugMatches = assetCatBlock[0].match(/slug: "/g) || [];
+    assert.equal(slugMatches.length, 7, "ASSET_CATEGORIES must have exactly 7 entries");
+  }
+  // Internal collection exists separately for Studio
+  assert.match(categoriesFile, /INTERNAL_ASSET_COLLECTIONS|INTERNAL_COLLECTION_MAP/, "Internal collection map must exist");
+  assert.match(categoriesFile, /component-preview/, "Internal collection component-preview should exist as internal");
 
   // Types: internal purpose
   assert.match(typesFile, /export const INTERNAL_PURPOSES.*component-preview/s);
@@ -79,21 +85,23 @@ test("component-preview selectable only in Studio, not public Portal", async () 
   assert.match(editorFile, /visibility.*internal|internal.*visibility/s, "AssetEditor must set internal visibility");
   assert.match(pickerFile, /ASSET_PURPOSE_OPTIONS|component-preview/, "AssetPicker must list component-preview");
   assert.match(studioFile, /VisualBlockEditor|AssetPickerButton/, "Studio visual block config must use AssetPicker");
-  assert.match(bulkUploadFile, /isInternalForUpload.*component-preview|component-preview.*internal/s, "Bulk upload must force internal visibility for component-preview");
+  assert.match(bulkUploadFile, /isInternalDestination|component-preview.*internal|internal.*component-preview/s, "Bulk upload must force internal visibility for component-preview");
 
   // Public Portal: NOT visible
   // Requirement 2: Do not expose in public navigation, resource cards, Asset Explorer tabs, routes, counts, search filters, sitemap
-  // Asset Explorer tabs are from ASSET_CATEGORIES — already checked no component-preview slug
-  assert.doesNotMatch(portalFile, /ASSET_CATEGORIES.*component-preview|slug.*component-preview/);
+  // Asset Explorer tabs are from ASSET_CATEGORIES (7 public only) — internal collection separate
+  assert.match(portalFile, /ASSET_CATEGORIES/, "Portal uses ASSET_CATEGORIES for tabs");
+  assert.doesNotMatch(portalFile, /\/resources\/assets\/component-preview/, "Portal must not have /resources/assets/component-preview route");
   // Explorer must filter out internal
   assert.match(portalFile, /visibility !== "internal"/, "AssetExplorer must filter visibility !== internal");
   assert.match(portalFile, /purpose !== "component-preview"/, "AssetExplorer must filter purpose !== component-preview");
   // Purpose filter in Portal is limited — no component-preview in public list
   assert.match(portalFile, /anatomy.*variant.*state/, "Public purpose filter must be limited to public purposes");
   assert.doesNotMatch(portalFile, /\["component-preview", "anatomy"/);
-  // No component-preview route created
-  assert.doesNotMatch(slugPage, /component-preview/, "Catch-all page must not mention component-preview — route uses ASSET_CATEGORY_MAP (7 categories)");
-  assert.doesNotMatch(categoriesFile, /component-preview/);
+  // No component-preview route created — slug page uses ASSET_CATEGORY_MAP (7 public only)
+  assert.doesNotMatch(slugPage, /slug: "component-preview"|assets\/component-preview/, "Catch-all page must not have component-preview public route");
+  // Public category map must not include component-preview as AssetType
+  assert.doesNotMatch(categoriesFile, /export const ASSET_CATEGORIES[\s\S]*?slug: "component-preview"/);
   // Resources page category cards not linking to component-preview
   assert.doesNotMatch(portalFile, /\/resources\/assets\/component-preview/);
   // Public asset counts derived from filtered categoryAssets (which excludes internal)

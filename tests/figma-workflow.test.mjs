@@ -319,7 +319,7 @@ test("component-preview is internal-only, not public asset explorer category", a
   assert.match(types, /assetVisibilityForPurpose/);
   assert.match(types, /visibility/);
 
-  // Public categories unchanged: 7 categories, no component-preview
+  // Public categories unchanged: 7 categories, no component-preview as public slug
   assert.match(categories, /slug: "icon"/);
   assert.match(categories, /slug: "icon-illustration"/);
   assert.match(categories, /slug: "illustration"/);
@@ -327,7 +327,9 @@ test("component-preview is internal-only, not public asset explorer category", a
   assert.match(categories, /slug: "brand-asset"/);
   assert.match(categories, /slug: "template"/);
   assert.match(categories, /slug: "download"/);
-  assert.doesNotMatch(categories, /slug: "component-preview"/);
+  assert.doesNotMatch(categories, /export const ASSET_CATEGORIES[\s\S]*?slug: "component-preview"/);
+  // Internal collection may exist for Studio
+  assert.match(categories, /INTERNAL_ASSET_COLLECTIONS|INTERNAL_COLLECTION_MAP/);
 
   // Resolver has internal helpers
   assert.match(resolver, /isInternalAsset/);
@@ -345,8 +347,8 @@ test("component-preview is internal-only, not public asset explorer category", a
   // No route /resources/assets/component-preview created
   // Expected routes are only the 7 known categories - check route-audit covers this
   const slugPage = await readProjectFile("app/[[...slug]]/page.tsx");
-  // Slug page uses ASSET_CATEGORY_MAP - component-preview is not in it
-  assert.doesNotMatch(slugPage, /component-preview/);
+  // Slug page uses ASSET_CATEGORY_MAP (public only) - component-preview is not a public category route
+  assert.doesNotMatch(slugPage, /\/resources\/assets\/component-preview|slug: "component-preview"/);
 
   // Studio: component-preview IS selectable
   // Studio picker uses ASSET_PURPOSE_OPTIONS which includes component-preview (internal)

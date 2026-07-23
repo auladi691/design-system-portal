@@ -5,40 +5,55 @@ import { Icon } from "@/components/icons";
 import { AssetEditor } from "@/components/asset-editor";
 import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ASSET_CATEGORIES, categoryLabel } from "@/lib/asset-categories";
+import {
+  ASSET_CATEGORIES,
+  INTERNAL_ASSET_COLLECTIONS,
+  categoryLabel,
+  uploadLabelForCategory,
+  INTERNAL_COLLECTION_MAP,
+} from "@/lib/asset-categories";
 import { deleteStoragePath } from "@/lib/asset-storage";
 import { friendlyErrorMessage } from "@/lib/repository";
 import { pushToast } from "@/lib/toast";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { AppContext } from "@/components/design-system-app";
-import { ASSET_PURPOSE_OPTIONS, type Asset, type AssetPurpose, type AssetType } from "@/types/content";
+import { ASSET_PURPOSE_OPTIONS, type Asset, type AssetPurpose } from "@/types/content";
+import type { BulkUploadDestination } from "@/lib/bulk-upload";
 
 type AssetsManagerProps = { app: AppContext };
 
-const CATEGORY_TABS: { slug: AssetType; label: string }[] = ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label }));
+type CategoryView = BulkUploadDestination;
 
 export function AssetsManager({ app }: AssetsManagerProps) {
-  const [type, setType] = useState<AssetType>(ASSET_CATEGORIES[0].slug as AssetType);
+  const [activeView, setActiveView] = useState<CategoryView>(ASSET_CATEGORIES[0].slug);
   const [query, setQuery] = useState("");
   const [purposeFilter, setPurposeFilter] = useState<"all" | AssetPurpose>("all");
   const [selected, setSelected] = useState<Asset | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkCategory, setBulkCategory] = useState<AssetType>("icon");
+  const [bulkDestination, setBulkDestination] = useState<BulkUploadDestination>(ASSET_CATEGORIES[0].slug);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [confirmSingleDelete, setConfirmSingleDelete] = useState<Asset | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const isInternalView = activeView === "component-preview";
   const lower = query.toLowerCase();
-  const list = useMemo(
-    () =>
-      app.data.assets.filter((a) => {
-        if (a.type !== type) return false;
+
+  const list = useMemo(() => {
+    if (isInternalView) {
+      return app.data.assets.filter((a) => {
+        const isInternal = a.purpose === "component-preview" || a.visibility === "internal";
+        if (!isInternal) return false;
         if (purposeFilter !== "all" && a.purpose !== purposeFilter) return false;
         return `${a.name} ${a.category} ${a.brand} ${a.purpose} ${a.keywords.join(" ")}`.toLowerCase().includes(lower);
-      }),
-    [app.data.assets, type, lower, purposeFilter],
-  );
+      });
+    }
+    return app.data.assets.filter((a) => {
+      if (a.type !== activeView) return false;
+      if (purposeFilter !== "all" && a.purpose !== purposeFilter) return false;
+      return `${a.name} ${a.category} ${a.brand} ${a.purpose} ${a.keywords.join(" ")}`.toLowerCase().includes(lower);
+    });
+  }, [app.data.assets, activeView, isInternalView, lower, purposeFilter]);
 
   const existingSlugs = useMemo(() => app.data.assets.map((a) => a.slug), [app.data.assets]);
 
@@ -54,24 +69,33 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   const selectAll = () => setSelection(new Set(list.map((a) => a.id)));
   const clearSelection = () => setSelection(new Set());
 
-  const openBulk = (cat: AssetType) => {
-    setBulkCategory(cat);
+  const openUploadForCurrent = () => {
+    setBulkDestination(activeView);
     setBulkOpen(true);
   };
 
-  const createBlank = async (cat: AssetType) => {
+  const uploadLabel = uploadLabelForCategory(activeView);
+  const destinationConfig = isInternalView
+    ? INTERNAL_COLLECTION_MAP[activeView as "component-preview"]
+    : (ASSET_CATEGORIES.find((c) => c.slug === activeView) ?? ASSET_CATEGORIES[0]);
+
+  const createBlank = async (dest: BulkUploadDestination) => {
+    const isInternal = dest === "component-preview";
     const id = crypto.randomUUID();
-    const name = `New ${categoryLabel(cat).slice(0, -1)}`;
+    const baseLabel = isInternal
+      ? INTERNAL_COLLECTION_MAP[dest as "component-preview"].label.slice(0, -1)
+      : categoryLabel(dest as never).slice(0, -1);
+    const name = `New ${baseLabel}`;
     const slug = uniqueSlug(slugify(name), existingSlugs);
     const asset: Asset = {
       id,
-      type: cat,
+      type: isInternal ? "icon-illustration" : (dest as Asset["type"]),
       name,
       slug,
-      category: "General",
+      category: isInternal ? "Component preview" : "General",
       brand: "Shared",
-      purpose: "general-asset",
-      visibility: "public",
+      purpose: isInternal ? "component-preview" : "general-asset",
+      visibility: isInternal ? "internal" : "public",
       status: "draft",
       description: "",
       keywords: [],
@@ -123,13 +147,18 @@ export function AssetsManager({ app }: AssetsManagerProps) {
 
   const bulkPublish = async () => {
     setBusy(true);
-    let ok = 0, fail = 0;
+    let ok = 0,
+      fail = 0;
     try {
       for (const id of selection) {
         const target = app.data.assets.find((a) => a.id === id);
         if (!target) continue;
         try {
-          const result = await app.upsertAsset({ ...target, status: "published", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+          const result = await app.upsertAsset({
+            ...target,
+            status: "published",
+            updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+          });
           if (result.ok) ok += 1;
           else fail += 1;
         } catch {
@@ -146,13 +175,18 @@ export function AssetsManager({ app }: AssetsManagerProps) {
 
   const bulkArchive = async () => {
     setBusy(true);
-    let ok = 0, fail = 0;
+    let ok = 0,
+      fail = 0;
     try {
       for (const id of selection) {
         const target = app.data.assets.find((a) => a.id === id);
         if (!target) continue;
         try {
-          const result = await app.upsertAsset({ ...target, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+          const result = await app.upsertAsset({
+            ...target,
+            status: "archived",
+            updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+          });
           if (result.ok) ok += 1;
           else fail += 1;
         } catch {
@@ -199,7 +233,9 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         const details = [
           databaseFailures ? `${databaseFailures} asset${databaseFailures === 1 ? "" : "s"}` : "",
           storageFailures ? `${storageFailures} storage file${storageFailures === 1 ? "" : "s"}` : "",
-        ].filter(Boolean).join(" and ");
+        ]
+          .filter(Boolean)
+          .join(" and ");
         pushToast("warning", `${ok} asset${ok === 1 ? "" : "s"} removed. ${details} could not be deleted. Try again.`);
       }
       clearSelection();
@@ -211,48 +247,79 @@ export function AssetsManager({ app }: AssetsManagerProps) {
     }
   };
 
+  const publicCounts = (slug: string) =>
+    app.data.assets.filter((a) => (a as { type: string }).type === slug).length;
+  const internalCount = app.data.assets.filter((a) => a.purpose === "component-preview" || a.visibility === "internal").length;
+
   return (
     <div className="studio-page">
-      <StudioHeader
-        eyebrow="Assets"
-        title="Asset Library"
-        action={
-          <button className="primary-button" onClick={() => openBulk(type)}>
-            <Icon name="upload" />Bulk upload
-          </button>
-        }
-      />
+      <StudioHeader eyebrow="Assets" title="Asset Library" />
 
-      <div className="asset-manager-tabs" role="tablist" aria-label="Asset categories">
-        {CATEGORY_TABS.map((tab) => (
-          <button
-            key={tab.slug}
-            role="tab"
-            aria-selected={type === tab.slug}
-            className={type === tab.slug ? "active" : ""}
-            onClick={() => setType(tab.slug as AssetType)}
-          >
-            {tab.label}
-            <span className="tab-count">{app.data.assets.filter((a) => a.type === tab.slug).length}</span>
-          </button>
-        ))}
+      <div className="asset-manager-tabs-wrap">
+        <div className="asset-manager-tabs" role="tablist" aria-label="Asset categories">
+          {ASSET_CATEGORIES.map((cat) => (
+            <button
+              key={cat.slug}
+              role="tab"
+              aria-selected={activeView === cat.slug}
+              className={activeView === cat.slug ? "active" : ""}
+              onClick={() => setActiveView(cat.slug)}
+            >
+              {cat.label}
+              <span className="tab-count">{publicCounts(cat.slug)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="asset-manager-tabs internal" role="tablist" aria-label="Internal collections">
+          <span className="internal-label">Internal</span>
+          {INTERNAL_ASSET_COLLECTIONS.map((col) => (
+            <button
+              key={col.id}
+              role="tab"
+              aria-selected={activeView === col.id}
+              className={activeView === col.id ? "active internal-tab" : "internal-tab"}
+              onClick={() => setActiveView(col.id)}
+              title={col.description}
+            >
+              {col.label}
+              <span className="tab-count">{internalCount}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="manager-toolbar">
-        <label className="search-field">
-          <Icon name="search" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search assets..." aria-label="Search assets" />
-        </label>
-        <div className="manager-toolbar-actions">
-          <label aria-label="Filter by purpose" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="manager-toolbar manager-toolbar-category">
+        <div className="manager-toolbar-left">
+          <label className="search-field">
+            <Icon name="search" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${isInternalView ? "component previews" : destinationConfig.label.toLowerCase()}...`}
+              aria-label="Search assets"
+            />
+          </label>
+          <label aria-label="Filter by purpose" className="purpose-filter-label">
             <small>Purpose</small>
             <select value={purposeFilter} onChange={(e) => setPurposeFilter(e.target.value as Asset["purpose"] | "all")}>
               <option value="all">All purposes</option>
-              {ASSET_PURPOSE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {ASSET_PURPOSE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                  {o.internal ? " (internal)" : ""}
+                </option>
+              ))}
             </select>
           </label>
-          <button className="secondary-button" onClick={() => createBlank(type)} disabled={busy}>
-            <Icon name="plus" />New draft
+        </div>
+        <div className="manager-toolbar-actions">
+          <button className="primary-button" onClick={openUploadForCurrent}>
+            <Icon name="upload" />
+            {uploadLabel}
+          </button>
+          <button className="secondary-button" onClick={() => createBlank(activeView)} disabled={busy}>
+            <Icon name="plus" />
+            New draft
           </button>
         </div>
       </div>
@@ -261,47 +328,89 @@ export function AssetsManager({ app }: AssetsManagerProps) {
         <div className="bulk-toolbar" role="region" aria-label="Bulk actions">
           <strong>{selection.size} selected</strong>
           <div className="bulk-toolbar-actions">
-            <button className="secondary-button" onClick={bulkPublish} disabled={busy}>Publish</button>
-            <button className="secondary-button" onClick={bulkArchive} disabled={busy}>Archive</button>
-            <button className="danger-button" onClick={() => setConfirmBulkDelete(true)} disabled={busy}><Icon name="trash" />Delete</button>
-            <button className="text-button" onClick={clearSelection} disabled={busy}>Clear</button>
+            <button className="secondary-button" onClick={bulkPublish} disabled={busy}>
+              Publish
+            </button>
+            <button className="secondary-button" onClick={bulkArchive} disabled={busy}>
+              Archive
+            </button>
+            <button className="danger-button" onClick={() => setConfirmBulkDelete(true)} disabled={busy}>
+              <Icon name="trash" />
+              Delete
+            </button>
+            <button className="text-button" onClick={clearSelection} disabled={busy}>
+              Clear
+            </button>
           </div>
         </div>
       )}
 
       {list.length === 0 ? (
-        <div className="empty-panel">
+        <div className="empty-panel empty-panel-category">
           <Icon name="image" />
-          <h2>No assets yet</h2>
-          <p>{`Upload ${categoryLabel(type).toLowerCase()} to get started.`}</p>
-          <button className="primary-button" onClick={() => openBulk(type)}><Icon name="upload" />Bulk upload</button>
+          <h2>{isInternalView ? "No component previews yet" : `No ${destinationConfig.label.toLowerCase()} yet`}</h2>
+          <p>
+            {isInternalView
+              ? "Component previews are internal documentation visuals used only inside Design Preview, Variant Gallery, and State Gallery blocks. They never appear in the public Asset Explorer."
+              : destinationConfig.emptyMessage}
+          </p>
+          <div className="empty-panel-actions">
+            <button className="primary-button" onClick={openUploadForCurrent}>
+              <Icon name="upload" />
+              {uploadLabel}
+            </button>
+          </div>
+          <small className="muted-note">
+            Allowed formats: {destinationConfig.allowedExtensions.join(", ")} · Max {formatSize(destinationConfig.maxSizeBytes)}
+            {isInternalView && " · Automatically set to purpose component-preview and visibility internal"}
+          </small>
         </div>
       ) : (
         <>
           <div className="asset-manager-bulk-head">
-            <button className="text-button" onClick={selectAll} disabled={busy}>Select all ({list.length})</button>
-            {selection.size > 0 && <button className="text-button" onClick={clearSelection} disabled={busy}>Clear selection</button>}
+            <button className="text-button" onClick={selectAll} disabled={busy}>
+              Select all ({list.length})
+            </button>
+            {selection.size > 0 && (
+              <button className="text-button" onClick={clearSelection} disabled={busy}>
+                Clear selection
+              </button>
+            )}
           </div>
           <div className="asset-manager-grid">
             {list.map((a) => (
               <article key={a.id} className={`asset-manager-card status-${a.status} ${selection.has(a.id) ? "selected" : ""}`}>
                 <label className="asset-select">
-                  <input type="checkbox" checked={selection.has(a.id)} onChange={() => toggleSelection(a.id)} aria-label={`Select ${a.name}`} />
+                  <input
+                    type="checkbox"
+                    checked={selection.has(a.id)}
+                    onChange={() => toggleSelection(a.id)}
+                    aria-label={`Select ${a.name}`}
+                  />
                 </label>
                 <button className="asset-manager-card-body" onClick={() => setSelected(a)} aria-label={`Edit ${a.name}`}>
                   <div className="asset-glyph" aria-hidden="true">
                     {a.fileUrl && a.mimeType && a.mimeType.startsWith("image/") ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={a.fileUrl} alt={a.altText || a.name} loading="lazy" />
-                    ) : <span>{a.glyph}</span>}
+                    ) : (
+                      <span>{a.glyph}</span>
+                    )}
                   </div>
                   <strong>{a.name}</strong>
-                  <small>{a.category} · {a.purpose.replace("-", " ")}</small>
+                  <small>
+                    {a.category} · {a.purpose.replace("-", " ")}
+                    {a.visibility === "internal" ? " · internal" : ""}
+                  </small>
                   <em className={`status ${a.status}`}>{a.status}</em>
                 </button>
                 <div className="asset-card-actions">
-                  <button onClick={() => setSelected(a)} aria-label={`Edit ${a.name}`} title="Edit"><Icon name="edit" /></button>
-                  <button onClick={() => setConfirmSingleDelete(a)} aria-label={`Delete ${a.name}`} title="Delete"><Icon name="trash" /></button>
+                  <button onClick={() => setSelected(a)} aria-label={`Edit ${a.name}`} title="Edit">
+                    <Icon name="edit" />
+                  </button>
+                  <button onClick={() => setConfirmSingleDelete(a)} aria-label={`Delete ${a.name}`} title="Delete">
+                    <Icon name="trash" />
+                  </button>
                 </div>
               </article>
             ))}
@@ -310,17 +419,12 @@ export function AssetsManager({ app }: AssetsManagerProps) {
       )}
 
       {selected && (
-        <AssetEditor
-          asset={selected}
-          app={app}
-          close={() => setSelected(null)}
-          onDelete={(asset) => setConfirmSingleDelete(asset)}
-        />
+        <AssetEditor asset={selected} app={app} close={() => setSelected(null)} onDelete={(asset) => setConfirmSingleDelete(asset)} />
       )}
 
       <BulkUploadDialog
         open={bulkOpen}
-        initialCategory={bulkCategory}
+        initialDestination={bulkDestination}
         existingSlugs={existingSlugs}
         onClose={() => setBulkOpen(false)}
         onComplete={() => void app.reload()}
@@ -351,14 +455,18 @@ export function AssetsManager({ app }: AssetsManagerProps) {
   );
 }
 
-function StudioHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) {
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+}
+
+function StudioHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
     <header className="studio-header">
       <div>
         <span>{eyebrow}</span>
         <h1>{title}</h1>
       </div>
-      {action && <div>{action}</div>}
     </header>
   );
 }

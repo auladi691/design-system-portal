@@ -1,5 +1,6 @@
-import { ASSET_CATEGORY_MAP } from "@/lib/asset-categories";
+import { ASSET_CATEGORY_MAP, INTERNAL_COLLECTION_MAP } from "@/lib/asset-categories";
 import type { AssetType } from "@/types/content";
+import type { BulkUploadDestination } from "@/lib/bulk-upload";
 
 export type ValidationResult = {
   ok: boolean;
@@ -12,12 +13,24 @@ function getExtension(name: string): string {
   return name.slice(idx + 1).toLowerCase();
 }
 
+function getConfigForDestination(destination: BulkUploadDestination | AssetType) {
+  if ((INTERNAL_COLLECTION_MAP as Record<string, unknown>)[destination as string]) {
+    return INTERNAL_COLLECTION_MAP[destination as keyof typeof INTERNAL_COLLECTION_MAP] as unknown as {
+      label: string;
+      allowedExtensions: readonly string[];
+      allowedMimeTypes: readonly string[];
+      maxSizeBytes: number;
+    };
+  }
+  return ASSET_CATEGORY_MAP[destination as AssetType];
+}
+
 export function validateAssetFile(
   file: File,
-  type: AssetType,
+  destination: BulkUploadDestination | AssetType,
   queue: { name: string }[],
 ): ValidationResult {
-  const config = ASSET_CATEGORY_MAP[type];
+  const config = getConfigForDestination(destination);
   const errors: string[] = [];
   if (!config) {
     errors.push("This category is not available yet.");

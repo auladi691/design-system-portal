@@ -3,22 +3,29 @@ import { deleteStoragePath, uploadAssetFile } from "@/lib/asset-storage";
 import { saveAsset } from "@/lib/repository";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { Asset, AssetType } from "@/types/content";
+import type { InternalAssetCollectionId } from "@/lib/asset-categories";
+
+export type BulkUploadDestination = AssetType | InternalAssetCollectionId;
 
 export type BulkUploadItem = {
   id: string;
   file: File;
   type: AssetType;
+  destination: BulkUploadDestination;
   name: string;
   slug: string;
   category: string;
   brand: Asset["brand"];
   purpose: Asset["purpose"];
+  visibility: Asset["visibility"];
   theme: Asset["theme"];
   description: string;
   keywords: string[];
   version: string;
   altText: string;
   caption: string;
+  figmaUrl?: string;
+  downloadAvailable: boolean;
   status: Asset["status"];
   progress: number;
   error: string | null;
@@ -27,6 +34,19 @@ export type BulkUploadItem = {
   done: boolean;
   result?: Asset;
 };
+
+export function isInternalDestination(dest: BulkUploadDestination): boolean {
+  return dest === "component-preview";
+}
+
+export function storageTypeForDestination(dest: BulkUploadDestination): AssetType {
+  // Storage bucket path requires AssetType; for internal we use download-safe visual type
+  // but preserve purpose+visibility internal. We store component-preview under icon-illustration path
+  // to keep allowed MIME validation consistent, but still map type to asset type rules.
+  // For simplicity: component-preview uses icon-illustration storage shape (svg/png/webp).
+  if (dest === "component-preview") return "icon-illustration";
+  return dest as AssetType;
+}
 
 const MAX_CONCURRENCY = 3;
 
@@ -56,7 +76,6 @@ async function runWorker(
       onItemChange(item.id, { progress: 40 });
       const stored = await uploadAssetFile(item.type, item.file);
       onItemChange(item.id, { progress: 85 });
-      const isInternalForUpload = item.purpose === "component-preview";
       const asset: Asset = {
         id: item.id,
         type: item.type,
@@ -65,7 +84,7 @@ async function runWorker(
         category: item.category,
         brand: item.brand,
         purpose: item.purpose,
-        visibility: isInternalForUpload ? "internal" : "public",
+        visibility: item.visibility,
         theme: item.theme,
         status: publishAfterUpload ? "published" : "draft",
         description: item.description,
@@ -75,8 +94,8 @@ async function runWorker(
         updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
         altText: item.altText,
         caption: item.caption,
-        figmaUrl: undefined,
-        downloadAvailable: true,
+        figmaUrl: item.figmaUrl,
+        downloadAvailable: item.downloadAvailable,
         filePath: stored.path,
         fileUrl: stored.url,
         mimeType: stored.mimeType,
@@ -107,25 +126,36 @@ async function runWorker(
   }
 }
 
-export function makeItemFromFile(file: File, type: AssetType, existingSlugs: string[]): BulkUploadItem {
+export function makeItemFromFile(
+  file: File,
+  destination: BulkUploadDestination,
+  existingSlugs: string[],
+): BulkUploadItem {
   const name = cleanName(file.name);
   const slug = uniqueSlug(slugify(name), existingSlugs);
+  const isInternal = isInternalDestination(destination);
+  const type: AssetType = storageTypeForDestination(destination);
   const config = ASSET_CATEGORY_MAP[type];
+
   return {
     id: crypto.randomUUID(),
     file,
     type,
+    destination,
     name,
     slug,
-    category: config ? defaultCategory(type) : "General",
+    category: isInternal ? "Component preview" : config ? defaultCategory(type) : "General",
     brand: "Shared",
-    purpose: "general-asset",
+    purpose: isInternal ? "component-preview" : "general-asset",
+    visibility: isInternal ? "internal" : "public",
     theme: "both",
     description: "",
     keywords: [],
     version: "1.0",
     altText: "",
     caption: "",
+    figmaUrl: undefined,
+    downloadAvailable: true,
     status: "draft",
     progress: 0,
     error: null,
@@ -133,6 +163,10 @@ export function makeItemFromFile(file: File, type: AssetType, existingSlugs: str
     uploading: false,
     done: false,
   };
+}
+
+export function makeItemFromFileLegacy(file: File, type: AssetType, existingSlugs: string[]): BulkUploadItem {
+  return makeItemFromFile(file, type, existingSlugs);
 }
 
 function cleanName(filename: string): string {
