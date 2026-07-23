@@ -29,9 +29,23 @@ Portal:
 
 Portal only shows assets with status `published`.
 
+## Internal asset purpose: Component preview
+
+Component preview assets are internal CMS assets used only to connect visual files to documentation blocks. They must not become a public Portal category.
+
+- Stored as `assetPurpose: "component-preview"` with `visibility: "internal"`.
+- Never exposed in public Portal navigation, Resources cards, Asset Explorer tabs, public routes (`/resources/assets/component-preview` does not exist), public counts, search filters, or sitemap.
+- Public categories remain unchanged: icon, icon-illustration, illustration, logo, brand-asset, template, download.
+- A published Component preview renders only when referenced by a published documentation block (Design Preview, Variant Gallery, State Gallery).
+- Draft or archived Component preview assets never render publicly.
+- Studio: visible in Asset Library, Asset Editor, Asset Picker, and visual block configuration.
+- Do not classify Button previews as Illustrations or Downloads — use the internal purpose.
+
+Portal resolves component-preview only through the published document relation: `fetchPublishedSite` collects referenced assetIds from published pages and includes published internal assets only when referenced. All other internal assets are excluded from public listing.
+
 ## Asset metadata
 
-Each asset stores: name, slug, type, category, brand, description, keywords, version, status, alternative text, file path, file URL, MIME type, file size, original filename, created date, and updated date.
+Each asset stores: name, slug, type, category, brand, purpose, visibility, description, keywords, version, status, alternative text, caption, theme, Figma URL, download availability, file path, file URL, MIME type, file size, original filename, created date, and updated date.
 
 SVG icons should use `currentColor`. Assets may define separate light/dark files. Show usage references before archive or delete.
 

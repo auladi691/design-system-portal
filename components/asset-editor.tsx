@@ -177,11 +177,15 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
           </label>
           <label>Category<input value={item.category} onChange={(e) => update({ category: e.target.value })} /></label>
           <label>Asset purpose
-            <select value={item.purpose} onChange={(e) => update({ purpose: e.target.value as AssetPurpose })}>
-              {ASSET_PURPOSE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <select value={item.purpose} onChange={(e) => {
+              const newPurpose = e.target.value as AssetPurpose;
+              const newVisibility = newPurpose === "component-preview" ? "internal" as const : "public" as const;
+              update({ purpose: newPurpose, visibility: newVisibility });
+            }}>
+              {ASSET_PURPOSE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}{o.internal ? " (internal)" : ""}</option>)}
             </select>
           </label>
-          <small className="muted-note">{ASSET_PURPOSE_OPTIONS.find((o) => o.value === item.purpose)?.description}</small>
+          <small className="muted-note">{ASSET_PURPOSE_OPTIONS.find((o) => o.value === item.purpose)?.description}{item.visibility === "internal" || item.purpose === "component-preview" ? " — This asset is internal-only and will not appear in public Asset Explorer." : ""}</small>
           <label>Brand
             <select value={item.brand} onChange={(e) => update({ brand: e.target.value as AssetBrand })}>
               {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}

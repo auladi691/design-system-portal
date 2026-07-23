@@ -18,6 +18,8 @@ Dashboard, Content, Tokens, Assets, Releases, Feedback, Settings.
 
 Home, navigation, footer, Design, Foundations, Components, Patterns, Resources, Asset Explorer, Releases, system copy, metadata, relations, order, visibility, and assets must be manageable from the CMS.
 
+Component preview assets are internal: selectable in Studio Asset Library, Asset Editor, Asset Picker, and documentation visual block configuration. They are stored as `assetPurpose: "component-preview"` + `visibility: "internal"` and never become a public Asset Explorer category or route. Published previews render only when referenced by a published doc block; draft/archived remain hidden publicly.
+
 Delete flow is `unpublish → archive → permanent delete`. Prefer archive. Never silently remove an asset or token used by published pages. Permanent delete requires a confirmation dialog and removes both the database record and the Storage file.
 
 ## Authentication

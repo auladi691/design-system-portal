@@ -71,6 +71,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
       category: "General",
       brand: "Shared",
       purpose: "general-asset",
+      visibility: "public",
       status: "draft",
       description: "",
       keywords: [],

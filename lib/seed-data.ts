@@ -77,6 +77,7 @@ const asset = (
   category,
   brand,
   purpose: "general-asset",
+  visibility: "public",
   status: "published",
   description: `${name} helps communicate meaning clearly.`,
   keywords: [name.toLowerCase(), category.toLowerCase()],

@@ -42,6 +42,7 @@ create table if not exists public.assets (
   category text not null default 'General',
   brand text not null default 'Shared',
   purpose text not null default 'general-asset',
+  visibility text not null default 'public',
   status public.content_status not null default 'draft',
   description text not null default '',
   keywords text[] not null default '{}',

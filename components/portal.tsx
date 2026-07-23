@@ -433,7 +433,8 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const slugType = type as Asset["type"] | undefined;
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState<(typeof BRANDS)[number]>("All");
-  const [purpose, setPurpose] = useState<"all" | Asset["purpose"]>("all");
+  // Public explorer must not include internal purposes like component-preview
+  const [purpose, setPurpose] = useState<"all" | Exclude<Asset["purpose"], "component-preview">>("all");
   const [selected, setSelected] = useState<Asset | null>(null);
 
   const active: Asset["type"] = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : ASSET_CATEGORIES[0].slug;
@@ -441,7 +442,9 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const showBrand = config?.showBrandFilter ?? false;
 
   const lower = query.toLowerCase();
-  const publishedAssets = app.data.assets.filter((a) => a.status === "published");
+  // Component preview is internal-only: never shown in public Asset Explorer.
+  // Public explorer shows only public purposes + published status.
+  const publishedAssets = app.data.assets.filter((a) => a.status === "published" && a.visibility !== "internal" && a.purpose !== "component-preview");
   const categoryAssets = publishedAssets.filter((a) => a.type === active);
   const assets = categoryAssets.filter((a) =>
     (brand === "All" || a.brand === brand) &&
@@ -477,9 +480,9 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
         <div className="brand-filter" role="group" aria-label="Purpose filter" style={{ marginTop: 8 }}>
           <span>Purpose</span>
           <button className={purpose === "all" ? "active" : ""} onClick={() => setPurpose("all")} aria-pressed={purpose === "all"}>All</button>
-          {(["component-preview", "anatomy", "variant", "state", "foundation-visual", "cover-visual"] as const).map((purp) => (
+          {(["anatomy", "variant", "state", "foundation-visual", "cover-visual"] as const).map((purp) => (
             <button key={purp} className={purpose === purp ? "active" : ""} onClick={() => setPurpose(purp)} aria-pressed={purpose === purp}>
-              {purp === "component-preview" ? "Preview" : purp === "foundation-visual" ? "Foundation" : purp.replace("-", " ")}
+              {purp === "foundation-visual" ? "Foundation" : purp.replace("-", " ")}
             </button>
           ))}
         </div>

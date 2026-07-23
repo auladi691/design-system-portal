@@ -1,4 +1,16 @@
-import type { Asset } from "@/types/content";
+import { isInternalPurpose, type Asset } from "@/types/content";
+
+export const INTERNAL_ASSET_PURPOSES = ["component-preview"] as const;
+
+export function isInternalAsset(asset: Pick<Asset, "purpose" | "visibility"> | null | undefined): boolean {
+  if (!asset) return false;
+  if (asset.visibility === "internal") return true;
+  return isInternalPurpose(asset.purpose as never);
+}
+
+export function isPublicAsset(asset: Pick<Asset, "purpose" | "visibility"> | null | undefined): boolean {
+  return !isInternalAsset(asset);
+}
 
 export function resolveAsset(
   assetId: string | undefined,
@@ -10,6 +22,25 @@ export function resolveAsset(
   if (!found) return null;
   if (options.requirePublished && found.status !== "published") return null;
   return found;
+}
+
+export function resolvePublishedDocAsset(
+  assetId: string | undefined,
+  assets: Asset[],
+): Asset | null {
+  // Published doc relation: asset must be published and, if internal (component-preview),
+  // it is only included when referenced by a published page (handled in fetchPublishedSite).
+  // Draft / archived assets never pass this gate.
+  const asset = resolveAsset(assetId, assets, { requirePublished: true });
+  if (!asset) return null;
+  return asset;
+}
+
+export function resolvePublishedDocAssets(
+  assetIds: (string | undefined)[],
+  assets: Asset[],
+): Asset[] {
+  return resolveAssets(assetIds, assets, { requirePublished: true });
 }
 
 export function resolveAssetFileUrl(

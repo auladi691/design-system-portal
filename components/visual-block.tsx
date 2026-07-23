@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/icons";
-import { resolveAsset, isValidFigmaUrl, isDownloadAvailable } from "@/lib/asset-resolver";
+import { resolvePublishedDocAsset, isValidFigmaUrl, isDownloadAvailable } from "@/lib/asset-resolver";
 import { normalizeVisualBlockKind } from "@/types/content";
 import type { Asset, GalleryItem, VisualBlock as VisualBlockType, TokenImport } from "@/types/content";
 import type { ResolvedToken } from "@/lib/token-resolver";
@@ -67,7 +67,10 @@ function VisualBlockContent({
 }
 
 function AssetVisual({ assetId, assets, alt }: { assetId?: string; assets: Asset[]; alt?: string }) {
-  const asset = resolveAsset(assetId, assets, { requirePublished: false });
+  // Portal visual blocks must only render published assets.
+  // Draft / archived previews stay hidden in public Portal. Studio uses same resolver
+  // for realistic preview of what Portal will show; admin list already includes drafts.
+  const asset = resolvePublishedDocAsset(assetId, assets);
   if (asset?.fileUrl && asset.mimeType?.startsWith("image/")) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -87,7 +90,7 @@ function AssetVisual({ assetId, assets, alt }: { assetId?: string; assets: Asset
 }
 
 function DesignPreview({ block, assets }: { block: VisualBlockType; assets: Asset[] }) {
-  const asset = resolveAsset(block.assetId, assets, { requirePublished: false });
+  const asset = resolvePublishedDocAsset(block.assetId, assets);
   const hasRealVisual = Boolean(asset?.fileUrl && asset.mimeType?.startsWith("image/"));
   const hasFigma = isValidFigmaUrl(block.figmaUrl ?? asset?.figmaUrl);
   const hasDownload = block.downloadEnabled !== false && asset ? isDownloadAvailable(asset) : false;
@@ -153,7 +156,7 @@ function AssetGallery({ block, assets }: { block: VisualBlockType; assets: Asset
     <div className="visual-asset-gallery">
       <div className="gallery-grid">
         {items.map((item) => {
-          const asset = resolveAsset(item.assetId, assets, { requirePublished: false });
+          const asset = resolvePublishedDocAsset(item.assetId, assets);
           return (
             <div key={item.id} className="gallery-card">
               <div className="gallery-thumb">
@@ -188,7 +191,7 @@ function VariantGallery({ block, assets }: { block: VisualBlockType; assets: Ass
     <div className="visual-variant-gallery">
       <div className="variant-grid">
         {items.map((item) => {
-          const asset = resolveAsset(item.assetId, assets, { requirePublished: false });
+          const asset = resolvePublishedDocAsset(item.assetId, assets);
           return (
             <div key={item.id} className="variant-card">
               <span className="variant-name">{item.name ?? item.title ?? "Variant"}</span>
@@ -217,7 +220,7 @@ function StateGallery({ block, assets }: { block: VisualBlockType; assets: Asset
     <div className="visual-state-gallery">
       <div className="state-gallery-grid">
         {items.map((item) => {
-          const asset = resolveAsset(item.assetId, assets, { requirePublished: false });
+          const asset = resolvePublishedDocAsset(item.assetId, assets);
           return (
             <div key={item.id} className="state-gallery-card">
               <span className="state-gallery-name">{item.state ?? item.name ?? item.title ?? "State"}</span>

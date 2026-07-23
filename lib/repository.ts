@@ -34,6 +34,7 @@ type AssetRow = {
   category: string;
   brand: Asset["brand"];
   purpose?: string | null;
+  visibility?: string | null;
   status: Asset["status"];
   description: string;
   keywords: string[] | null;
@@ -139,6 +140,7 @@ async function mapAsset(row: AssetRow, client: NonNullable<ReturnType<typeof get
       fileUrl = null;
     }
   }
+  const purpose = sanitizePurpose(row.purpose);
   return {
     id: row.id,
     type: row.type,
@@ -146,7 +148,8 @@ async function mapAsset(row: AssetRow, client: NonNullable<ReturnType<typeof get
     slug: row.slug,
     category: row.category,
     brand: row.brand,
-    purpose: sanitizePurpose(row.purpose),
+    purpose,
+    visibility: row.visibility === "internal" ? "internal" : purpose === "component-preview" ? "internal" : "public",
     status: row.status,
     description: row.description ?? "",
     keywords: row.keywords ?? [],
@@ -224,22 +227,77 @@ function mapTokenImport(row: TokenImportRow): TokenImport {
   };
 }
 
+function collectReferencedAssetIds(pages: ContentPage[]): string[] {
+  const ids = new Set<string>();
+  for (const page of pages) {
+    if (page.coverAssetId) ids.add(page.coverAssetId);
+    if (page.figmaUrl) {
+      // not an asset
+    }
+    for (const section of page.sections ?? []) {
+      for (const block of section.visualBlocks ?? []) {
+        if (block.assetId) ids.add(block.assetId);
+        for (const item of block.items ?? []) {
+          if (item.assetId) ids.add(item.assetId);
+        }
+      }
+    }
+  }
+  // Also check portal config for hero/card assets
+  return [...ids];
+}
+
+export function isInternalAssetRow(row: AssetRow): boolean {
+  const purpose = row.purpose ?? "general-asset";
+  const visibility = row.visibility ?? (purpose === "component-preview" ? "internal" : "public");
+  return visibility === "internal" || purpose === "component-preview";
+}
+
+export function isInternalPurposeRow(purpose: string | null | undefined): boolean {
+  return purpose === "component-preview";
+}
+
 export async function fetchPublishedSite(): Promise<SiteFetchResult> {
   const client = getSupabase();
   if (!client) return { data: emptySiteData, error: "Supabase is not configured.", isPreview: false };
   try {
-    const [pagesRes, assetsRes, releasesRes, settingsRes, tokenImportsRes] = await Promise.all([
+    const [pagesRes, releasesRes, settingsRes, tokenImportsRes] = await Promise.all([
       client.from(PAGES_TABLE).select("*").eq("status", "published").order("updated_at", { ascending: false }),
-      client.from(ASSET_TABLE).select("*").eq("status", "published").order("updated_at", { ascending: false }),
       client.from(RELEASES_TABLE).select("*").eq("status", "published").order("release_date", { ascending: false }),
       client.from(SETTINGS_TABLE).select("*").eq("id", "default").maybeSingle(),
       client.from(TOKEN_IMPORTS_TABLE).select("*").eq("status", "published").order("published_at", { ascending: false }),
     ]);
     if (pagesRes.error) throw pagesRes.error;
-    if (assetsRes.error) throw assetsRes.error;
     if (releasesRes.error) throw releasesRes.error;
     if (settingsRes.error) throw settingsRes.error;
     if (tokenImportsRes.error && !/does not exist/i.test(tokenImportsRes.error.message)) throw tokenImportsRes.error;
+
+    const publishedPages = (pagesRes.data as PageRow[]).map(mapPage);
+    const referencedIds = collectReferencedAssetIds(publishedPages);
+
+    // Fetch all published assets
+    const assetsRes = await client.from(ASSET_TABLE).select("*").eq("status", "published").order("updated_at", { ascending: false });
+    if (assetsRes.error) throw assetsRes.error;
+
+    const allAssets = await Promise.all((assetsRes.data as AssetRow[]).map((row) => mapAsset(row, client)));
+
+    // Public portal: component-preview is internal-only (assetPurpose + visibility: internal).
+    // It must never appear as a public Asset Explorer category, nor in counts/routes/filters.
+    // Only published internal assets that are referenced by a published documentation block
+    // (design-preview, variant-gallery, state-gallery, etc.) are included so that
+    // referenced published previews render inside the correct documentation page.
+    // Draft / archived internal previews remain hidden because we only query published assets
+    // and only include internal ones when their id is in referencedIds.
+    const referencedSet = new Set(referencedIds);
+    const publicAssets = allAssets.filter((asset) => {
+      const isInternal = asset.visibility === "internal" || asset.purpose === "component-preview";
+      if (!isInternal) return true;
+      // Internal previews only included if referenced by a published doc — prevents
+      // standalone listing and public category/routes. Draft/archived already excluded
+      // by the eq("status","published") query.
+      return referencedSet.has(asset.id);
+    });
+
     const settings: SiteSettings = {
       name: settingsRes.data?.content?.name ?? "",
       tagline: settingsRes.data?.content?.tagline ?? "",
@@ -251,8 +309,8 @@ export async function fetchPublishedSite(): Promise<SiteFetchResult> {
     return {
       data: {
         settings,
-        pages: (pagesRes.data as PageRow[]).map(mapPage),
-        assets: await Promise.all((assetsRes.data as AssetRow[]).map((row) => mapAsset(row, client))),
+        pages: publishedPages,
+        assets: publicAssets,
         releases: (releasesRes.data as ReleaseRow[]).map(mapRelease),
         tokenImports: ((tokenImportsRes.data as TokenImportRow[]) ?? []).map(mapTokenImport),
       },
@@ -312,6 +370,7 @@ type AssetInsert = {
   category: string;
   brand: Asset["brand"];
   purpose: AssetPurpose;
+  visibility: string;
   status: Asset["status"];
   description: string;
   keywords: string[];
@@ -330,6 +389,7 @@ type AssetInsert = {
 };
 
 export function assetToInsert(asset: Asset): AssetInsert {
+  const visibility = asset.visibility ?? (asset.purpose === "component-preview" ? "internal" : "public");
   return {
     id: asset.id,
     type: asset.type,
@@ -338,6 +398,7 @@ export function assetToInsert(asset: Asset): AssetInsert {
     category: asset.category,
     brand: asset.brand,
     purpose: asset.purpose,
+    visibility,
     status: asset.status,
     description: asset.description,
     keywords: asset.keywords,
@@ -360,30 +421,20 @@ export async function saveAsset(asset: Asset): Promise<{ ok: boolean; error: str
   const client = getSupabase();
   if (!client) return { ok: false, error: "Storage is not configured." };
   const insert = assetToInsert(asset);
-  // Attempt full insert, fall back to insert without new columns if DB not migrated yet
   const { error } = await client.from(ASSET_TABLE).upsert(insert as never, { onConflict: "id" });
   if (error) {
-    // If new columns don't exist yet (pre-migration environment), retry without them
-    if (/column .* (purpose|caption|theme|figma_url|download_available) .* does not exist/i.test(error.message)) {
-      const legacy = {
-        id: insert.id,
-        type: insert.type,
-        name: insert.name,
-        slug: insert.slug,
-        category: insert.category,
-        brand: insert.brand,
-        status: insert.status,
-        description: insert.description,
-        keywords: insert.keywords,
-        metadata: insert.metadata,
-        version: insert.version,
-        alt_text: insert.alt_text,
-        file_path: insert.file_path,
-        file_url: insert.file_url,
-        mime_type: insert.mime_type,
-        file_size: insert.file_size,
-        original_file_name: insert.original_file_name,
-      } as unknown as Record<string, unknown>;
+    if (/column .* (purpose|caption|theme|figma_url|download_available|visibility) .* does not exist/i.test(error.message)) {
+      // Remove newer columns for legacy DB environments
+      const legacy: Record<string, unknown> = { ...insert } as unknown as Record<string, unknown>;
+      if (/visibility/.test(error.message)) delete legacy.visibility;
+      if (/purpose|caption|theme|figma_url|download_available/.test(error.message)) {
+        delete legacy.purpose;
+        delete legacy.caption;
+        delete legacy.theme;
+        delete legacy.figma_url;
+        delete legacy.download_available;
+        delete legacy.visibility;
+      }
       const { error: legacyError } = await client.from(ASSET_TABLE).upsert(legacy as never, { onConflict: "id" });
       if (legacyError) {
         console.warn("saveAsset fallback failed:", legacyError.message);

@@ -38,6 +38,12 @@ test("asset model extended for Figma-to-documentation workflow", async () => {
   assert.match(types, /coverAssetId\?/);
   assert.match(types, /AssetTheme/);
   assert.match(types, /ASSET_PURPOSE_OPTIONS/);
+  // Taxonomy correction: internal-only component-preview
+  assert.match(types, /AssetVisibility/);
+  assert.match(types, /INTERNAL_PURPOSES/);
+  assert.match(types, /isInternalPurpose/);
+  assert.match(types, /visibility: AssetVisibility/);
+  assert.match(types, /internal.*not listed in public/i);
   // Repository maps new columns
   assert.match(repo, /purpose/);
   assert.match(repo, /caption/);
@@ -290,6 +296,71 @@ test("no hardcoded editorial content as production source", async () => {
   // seed-data still exists for local preview only, but repository must not import it
   const repo = await readProjectFile("lib/repository.ts");
   assert.doesNotMatch(repo, /from ["']@\/lib\/seed-data["']/);
+});
+
+test("component-preview is internal-only, not public asset explorer category", async () => {
+  const types = await readProjectFile("types/content.ts");
+  const portal = await readProjectFile("components/portal.tsx");
+  const categories = await readProjectFile("lib/asset-categories.ts");
+  const resolver = await readProjectFile("lib/asset-resolver.ts");
+  const repo = await readProjectFile("lib/repository.ts");
+  const studioPicker = await readProjectFile("components/asset-picker.tsx");
+  const assetEditor = await readProjectFile("components/asset-editor.tsx");
+  const visualBlock = await readProjectFile("components/visual-block.tsx");
+  const migration = fileExists("supabase/migrations/20260719000009_one_design_asset_visibility.sql")
+    ? await readProjectFile("supabase/migrations/20260719000009_one_design_asset_visibility.sql")
+    : fileExists("supabase/migrations/20260719000008_one_design_asset_purpose_fields.sql")
+      ? await readProjectFile("supabase/migrations/20260719000008_one_design_asset_purpose_fields.sql")
+      : "";
+
+  // Type level: internal purpose definition
+  assert.match(types, /INTERNAL_PURPOSES.*component-preview/s);
+  assert.match(types, /isInternalPurpose/);
+  assert.match(types, /assetVisibilityForPurpose/);
+  assert.match(types, /visibility/);
+
+  // Public categories unchanged: 7 categories, no component-preview
+  assert.match(categories, /slug: "icon"/);
+  assert.match(categories, /slug: "icon-illustration"/);
+  assert.match(categories, /slug: "illustration"/);
+  assert.match(categories, /slug: "logo"/);
+  assert.match(categories, /slug: "brand-asset"/);
+  assert.match(categories, /slug: "template"/);
+  assert.match(categories, /slug: "download"/);
+  assert.doesNotMatch(categories, /slug: "component-preview"/);
+
+  // Resolver has internal helpers
+  assert.match(resolver, /isInternalAsset/);
+  assert.match(resolver, /isPublicAsset|INTERNAL_ASSET_PURPOSES/);
+  assert.match(resolver, /component-preview/);
+
+  // Portal: AssetExplorer must NOT have component-preview in public purpose filter
+  // It should only show anatomy, variant, state, foundation-visual, cover-visual
+  assert.doesNotMatch(portal, /\["component-preview", "anatomy"/);
+  assert.match(portal, /anatomy.*variant.*state/s);
+
+  // Portal explorer filters out internal assets
+  assert.match(portal, /visibility !== "internal"|purpose !== "component-preview"/);
+
+  // No route /resources/assets/component-preview created
+  // Expected routes are only the 7 known categories - check route-audit covers this
+  const slugPage = await readProjectFile("app/[[...slug]]/page.tsx");
+  // Slug page uses ASSET_CATEGORY_MAP - component-preview is not in it
+  assert.doesNotMatch(slugPage, /component-preview/);
+
+  // Studio: component-preview IS selectable
+  // Studio picker uses ASSET_PURPOSE_OPTIONS which includes component-preview (internal)
+  assert.match(studioPicker, /ASSET_PURPOSE_OPTIONS|component-preview|Component preview/);
+  assert.match(assetEditor, /component-preview|Asset purpose/);
+  // Visual block can render component-preview via published doc relation
+  assert.match(visualBlock, /design-preview/);
+
+  // Repository: fetchPublishedSite logic for internal assets only via published doc relation
+  assert.match(repo, /component-preview|isInternalAssetRow|INTERNAL_PURPOSES|visibility/);
+
+  // Migration for visibility column
+  assert.ok(migration.length > 0, "visibility migration must exist");
+  assert.match(migration, /visibility/);
 });
 
 test("no Figma API, no localStorage for CMS content", async () => {

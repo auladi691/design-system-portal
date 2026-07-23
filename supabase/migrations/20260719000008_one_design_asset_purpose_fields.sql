@@ -3,10 +3,22 @@
 
 alter table public.assets
   add column if not exists purpose text not null default 'general-asset',
+  add column if not exists visibility text not null default 'public',
   add column if not exists caption text not null default '',
   add column if not exists theme text not null default 'both',
   add column if not exists figma_url text,
   add column if not exists download_available boolean not null default true;
+
+-- Backfill visibility based on purpose for existing rows (internal for component-preview)
+update public.assets
+set visibility = 'internal'
+where purpose = 'component-preview'
+  and (visibility is null or visibility <> 'internal');
+
+update public.assets
+set visibility = 'public'
+where visibility is null
+   or visibility not in ('public', 'internal');
 
 -- Page cover asset reference for CMS-selected cover/thumbnail
 alter table public.pages

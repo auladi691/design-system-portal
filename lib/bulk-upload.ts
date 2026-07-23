@@ -56,6 +56,7 @@ async function runWorker(
       onItemChange(item.id, { progress: 40 });
       const stored = await uploadAssetFile(item.type, item.file);
       onItemChange(item.id, { progress: 85 });
+      const isInternalForUpload = item.purpose === "component-preview";
       const asset: Asset = {
         id: item.id,
         type: item.type,
@@ -64,6 +65,7 @@ async function runWorker(
         category: item.category,
         brand: item.brand,
         purpose: item.purpose,
+        visibility: isInternalForUpload ? "internal" : "public",
         theme: item.theme,
         status: publishAfterUpload ? "published" : "draft",
         description: item.description,

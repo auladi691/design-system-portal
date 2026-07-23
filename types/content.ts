@@ -12,8 +12,19 @@ export type AssetPurpose =
   | "cover-visual"
   | "general-asset";
 
-export const ASSET_PURPOSE_OPTIONS: { value: AssetPurpose; label: string; description: string }[] = [
-  { value: "component-preview", label: "Component preview", description: "Visual preview of a component for documentation" },
+export type AssetVisibility = "public" | "internal";
+
+export const INTERNAL_PURPOSES: AssetPurpose[] = ["component-preview"];
+
+export function isInternalPurpose(purpose: AssetPurpose): boolean {
+  return INTERNAL_PURPOSES.includes(purpose);
+}
+
+export function assetVisibilityForPurpose(purpose: AssetPurpose): AssetVisibility {
+  return isInternalPurpose(purpose) ? "internal" : "public";
+}
+
+export const PUBLIC_PURPOSE_OPTIONS: { value: AssetPurpose; label: string; description: string }[] = [
   { value: "anatomy", label: "Anatomy", description: "Labeled parts diagram of a component" },
   { value: "variant", label: "Variant", description: "A visual example of a component variant" },
   { value: "state", label: "State", description: "A visual example of a component state" },
@@ -21,6 +32,11 @@ export const ASSET_PURPOSE_OPTIONS: { value: AssetPurpose; label: string; descri
   { value: "foundation-visual", label: "Foundation visual", description: "Visual reference for a foundation (colour, spacing, typography, etc.)" },
   { value: "cover-visual", label: "Cover visual", description: "Cover or thumbnail image for a documentation page" },
   { value: "general-asset", label: "General asset", description: "General purpose asset not tied to a specific documentation role" },
+];
+
+export const ASSET_PURPOSE_OPTIONS: { value: AssetPurpose; label: string; description: string; internal?: boolean }[] = [
+  { value: "component-preview", label: "Component preview", description: "Internal CMS visual used only inside documentation blocks — not listed in public Asset Explorer", internal: true },
+  ...PUBLIC_PURPOSE_OPTIONS,
 ];
 
 export type AssetTheme = "light" | "dark" | "both";
@@ -191,6 +207,7 @@ export type Asset = {
   category: string;
   brand: AssetBrand;
   purpose: AssetPurpose;
+  visibility: AssetVisibility;
   status: PageStatus;
   description: string;
   keywords: string[];
