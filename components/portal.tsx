@@ -5,8 +5,9 @@ import type { AppContext } from "@/components/design-system-app";
 import { Icon } from "@/components/icons";
 import { ASSET_CATEGORIES, ASSET_CATEGORY_MAP, categoryLabel, formatFileSize } from "@/lib/asset-categories";
 import { collectionRouteForType, routeForPage } from "@/lib/routes";
-import { pushToast } from "@/lib/toast";
 import { useDialogFocus } from "@/components/dialog-focus";
+import { resolveAsset, isValidFigmaUrl, isDownloadAvailable } from "@/lib/asset-resolver";
+import { getResolvedTokensFromImport, getPublishedTokenImport } from "@/lib/token-resolver";
 import type { Asset, ContentPage } from "@/types/content";
 import { VisualBlock } from "@/components/visual-block";
 
@@ -153,9 +154,13 @@ function LoadError({ app, assetLibrary }: { app: AppContext; assetLibrary: boole
   );
 }
 
+// ── Homepage ──────────────────────────────────────────────────
+
 function Home({ app }: { app: AppContext }) {
   const featured = app.data.pages.filter((p) => p.featured && p.status === "published");
   const home = app.data.settings.portal?.home;
+  const heroAsset = heroAssetResolved(home?.heroAssetId, app.data.assets);
+
   return (
     <>
       <section className="home-hero">
@@ -169,14 +174,21 @@ function Home({ app }: { app: AppContext }) {
           </div>
         </div>
         <div className="hero-art" aria-hidden="true">
-          <div className="orbit orbit-a"><span>Aa</span></div>
-          <div className="orbit orbit-b"><span>24</span></div>
-          <div className="orbit orbit-c"><span>→</span></div>
-          <div className="hero-core">
-            <span className="core-dot" />
-            <strong>One system</strong>
-            <small>Clear decisions</small>
-          </div>
+          {heroAsset ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={heroAsset.fileUrl!} alt={heroAsset.altText || "Design system visual"} className="hero-real-art" />
+          ) : (
+            <>
+              <div className="orbit orbit-a"><span>Aa</span></div>
+              <div className="orbit orbit-b"><span>24</span></div>
+              <div className="orbit orbit-c"><span>→</span></div>
+              <div className="hero-core">
+                <span className="core-dot" />
+                <strong>One system</strong>
+                <small>Clear decisions</small>
+              </div>
+            </>
+          )}
         </div>
       </section>
       <section className="statement-section">
@@ -189,11 +201,11 @@ function Home({ app }: { app: AppContext }) {
           <h2>Start with the basics,<br />keep things consistent.</h2>
         </div>
         <div className="editorial-grid">
-           {featured.map((p, i) => (
-             <button className={`editorial-card card-${i + 1}`} key={p.id} onClick={() => app.navigate(routeForPage(p))}>
+          {featured.map((p, i) => (
+            <button className={`editorial-card card-${i + 1}`} key={p.id} onClick={() => app.navigate(routeForPage(p))}>
               <span className="card-index">0{i + 1}</span>
-              <div className="card-visual"><PreviewGlyph page={p} /></div>
-               <div className="card-content"><h3>{p.title}</h3><p>{p.summary}</p><Icon name="arrow" /></div>
+              <div className="card-visual"><CardVisual page={p} assets={app.data.assets} /></div>
+              <div className="card-content"><h3>{p.title}</h3><p>{p.summary}</p><Icon name="arrow" /></div>
             </button>
           ))}
         </div>
@@ -211,26 +223,66 @@ function Home({ app }: { app: AppContext }) {
             { number: "03", title: "Patterns", description: "Ways to solve recurring needs." },
             { number: "04", title: "Assets", description: "Icons, illustrations, and resources in one place." }
           ]).map((step) => (
-              <article key={step.number}><span>{step.number}</span><h3>{step.title}</h3><p>{step.description}</p></article>
-            ))}
+            <article key={step.number}><span>{step.number}</span><h3>{step.title}</h3><p>{step.description}</p></article>
+          ))}
         </div>
       </section>
-       {app.data.releases[0] && (
-         <section className="latest-release">
-           <span className="eyebrow">Latest release</span>
-           <h2>{app.data.releases[0].title}</h2>
-           <p>{app.data.releases[0].summary}</p>
-           <button className="text-button" onClick={() => app.navigate("/changelog")}>See what changed <Icon name="arrow" /></button>
-         </section>
-       )}
+      {app.data.releases[0] && (
+        <section className="latest-release">
+          <span className="eyebrow">Latest release</span>
+          <h2>{app.data.releases[0].title}</h2>
+          <p>{app.data.releases[0].summary}</p>
+          <button className="text-button" onClick={() => app.navigate("/changelog")}>See what changed <Icon name="arrow" /></button>
+        </section>
+      )}
     </>
   );
 }
 
+function heroAssetResolved(assetId: string | undefined, assets: Asset[]): Asset | null {
+  if (!assetId) return null;
+  return resolveAsset(assetId, assets, { requirePublished: true });
+}
+
+// ── Card visuals using real assets OR neutral unavailable ──
+
+function CardVisual({ page, assets }: { page: ContentPage; assets: Asset[] }) {
+  const coverId = page.coverAssetId;
+  const coverAsset = coverId ? resolveAsset(coverId, assets, { requirePublished: true }) : null;
+
+  if (coverAsset?.fileUrl && coverAsset.mimeType?.startsWith("image/")) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={coverAsset.fileUrl} alt={coverAsset.altText || page.title} loading="lazy" className="card-real-image" />;
+  }
+
+  // No cover visual: neutral treatment, not a fake preview that looks like documentation
+  // Use the design-preview block if available
+  const designPreview = page.sections.flatMap((s) => s.visualBlocks ?? []).find((b) => {
+    const k = b.kind;
+    return k === "design-preview" || k === "component-preview";
+  });
+  if (designPreview?.assetId) {
+    const previewAsset = resolveAsset(designPreview.assetId, assets, { requirePublished: true });
+    if (previewAsset?.fileUrl && previewAsset.mimeType?.startsWith("image/")) {
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={previewAsset.fileUrl} alt={previewAsset.altText || page.title} loading="lazy" className="card-real-image" />;
+    }
+  }
+
+  // No real visual: neutral placeholder that does not pretend to be documentation content
+  return (
+    <div className="card-neutral-placeholder" aria-hidden="true">
+      <span className="card-neutral-label">{page.title.slice(0, 2).toUpperCase()}</span>
+    </div>
+  );
+}
+
+// ── Collections ───────────────────────────────────────────────
+
 function Collection({ type, app }: { type: "foundation" | "component"; app: AppContext }) {
   const pages = app.data.pages.filter((p) => p.type === type && p.status === "published");
   const [query, setQuery] = useState("");
-  const groups = [...new Set(pages.map((p) => p.category))];
+  const groups = useMemo(() => [...new Set(pages.map((p) => p.category))], [pages]);
   const lower = query.toLowerCase();
   const collectionKey = type === "foundation" ? "foundations" : "components";
   const collection = app.data.settings.portal?.collections[collectionKey];
@@ -242,6 +294,12 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
         <p>{collection?.summary ?? (type === "foundation"
           ? "Use foundations to make clear, reusable, and easy-to-understand visual choices."
           : "Find anatomy, variants, states, behavior, and usage guidance for each component.")}</p>
+        {collection?.heroAssetId && resolveAsset(collection.heroAssetId, app.data.assets, { requirePublished: true })?.fileUrl && (
+          <div className="collection-hero-visual">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resolveAsset(collection.heroAssetId, app.data.assets, { requirePublished: true })!.fileUrl!} alt={collection?.eyebrow ?? collectionKey} className="collection-hero-image" />
+          </div>
+        )}
       </section>
       <div className="collection-tools">
         <label className="search-field">
@@ -257,60 +315,47 @@ function Collection({ type, app }: { type: "foundation" | "component"; app: AppC
             <h2>{group}</h2>
             <div className="collection-grid">
               {list.map((p) => (
-                 <button className="collection-card" key={p.id} onClick={() => app.navigate(routeForPage(p))}>
-                  <div className="collection-preview"><PreviewGlyph page={p} /></div>
+                <button className="collection-card" key={p.id} onClick={() => app.navigate(routeForPage(p))}>
+                  <div className="collection-preview"><CardVisual page={p} assets={app.data.assets} /></div>
                   <div><h3>{p.title}</h3><p>{p.summary}</p><span className="card-link">Read guidance <Icon name="arrow" /></span></div>
                 </button>
               ))}
             </div>
           </section>
         ) : null;
-       })}
-       {!pages.length && (
+      })}
+      {!pages.length && (
         <div className="empty-state">
-           <Icon name="search" />
-           <h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2>
-           <p>{collection?.emptyDescription ?? "Published foundations and components will appear here."}</p>
-         </div>
-       )}
-       {pages.length > 0 && !groups.some((group) => pages.some((p) => p.category === group && `${p.title} ${p.summary}`.toLowerCase().includes(lower))) && (
-         <div className="empty-state">
-           <Icon name="search" />
-           <h2>{app.data.settings.portal?.copy.noResults ?? "No matching guidance"}</h2>
-           <p>Try a different word or clear the search.</p>
-         </div>
-       )}
+          <Icon name="search" />
+          <h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2>
+          <p>{collection?.emptyDescription ?? "Published foundations and components will appear here."}</p>
+        </div>
+      )}
+      {pages.length > 0 && !groups.some((group) => pages.some((p) => p.category === group && `${p.title} ${p.summary}`.toLowerCase().includes(lower))) && (
+        <div className="empty-state">
+          <Icon name="search" />
+          <h2>{app.data.settings.portal?.copy.noResults ?? "No matching guidance"}</h2>
+          <p>Try a different word or clear the search.</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function PreviewGlyph({ page }: { page: ContentPage }) {
-  if (page.type === "component")
-    return (
-      <div className={`component-demo demo-${page.slug}`}>
-        {page.slug === "button" ? <span className="demo-button">Continue</span>
-          : page.slug === "input" ? <div className="demo-input"><small>Email</small><span>name@example.com</span></div>
-          : <span>{page.title}</span>}
-      </div>
-    );
-  const map: Record<string, React.ReactNode> = {
-    colour: <div className="swatch-stack"><i /><i /><i /></div>,
-    typography: <span className="type-glyph">Ag</span>,
-    spacing: <div className="space-bars"><i /><i /><i /></div>,
-    grid: <div className="grid-glyph" />,
-    motion: <div className="motion-glyph">→</div>,
-  };
-  return map[page.slug] || <span className="foundation-glyph">{page.title.slice(0, 2)}</span>;
-}
+// ── Detail pages ────────────────────────────────────────────
 
 function DocPage({ page, app }: { page: ContentPage; app: AppContext }) {
+  const publishedTokens = getPublishedTokenImport(app.data.tokenImports);
+  const resolvedTokens = useMemo(() => getResolvedTokensFromImport(publishedTokens), [publishedTokens]);
+  const coverAsset = page.coverAssetId ? resolveAsset(page.coverAssetId, app.data.assets, { requirePublished: true }) : null;
+
   return (
     <div className="doc-layout">
       <aside className="doc-sidebar" aria-label="Collection navigation">
-         <button onClick={() => app.navigate(collectionRouteForType(page.type))}>← All {page.type === "foundation" ? "foundations" : page.type === "component" ? "components" : `${page.type}s`}</button>
+        <button onClick={() => app.navigate(collectionRouteForType(page.type))}>← All {page.type === "foundation" ? "foundations" : page.type === "component" ? "components" : `${page.type}s`}</button>
         <span>{page.category}</span>
-         {app.data.pages.filter((p) => p.type === page.type && p.status === "published").map((p) => (
-           <button key={p.id} className={p.id === page.id ? "active" : ""} onClick={() => app.navigate(routeForPage(p))}>{p.title}</button>
+        {app.data.pages.filter((p) => p.type === page.type && p.status === "published").map((p) => (
+          <button key={p.id} className={p.id === page.id ? "active" : ""} onClick={() => app.navigate(routeForPage(p))}>{p.title}</button>
         ))}
       </aside>
       <article className="doc-content">
@@ -323,8 +368,15 @@ function DocPage({ page, app }: { page: ContentPage; app: AppContext }) {
             <span>v{page.version}</span>
             <span>Updated {page.updatedAt}</span>
           </div>
+          {coverAsset?.fileUrl && coverAsset.mimeType?.startsWith("image/") && (
+            <div className="doc-cover">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverAsset.fileUrl} alt={coverAsset.altText || coverAsset.name} className="doc-cover-image" />
+              {coverAsset.caption && <small className="doc-cover-caption">{coverAsset.caption}</small>}
+            </div>
+          )}
         </header>
-        {page.sections.map((section) => <DocSection key={section.id} section={section} page={page} />)}
+        {page.sections.map((section) => <DocSection key={section.id} section={section} page={page} assets={app.data.assets} resolvedTokens={resolvedTokens} activeTokenImport={publishedTokens} />)}
       </article>
       <aside className="toc" aria-label="On this page">
         <span>On this page</span>
@@ -334,21 +386,26 @@ function DocPage({ page, app }: { page: ContentPage; app: AppContext }) {
   );
 }
 
-function DocSection({ section, page }: { section: ContentPage["sections"][number]; page: ContentPage }) {
+function DocSection({
+  section,
+  page,
+  assets,
+  resolvedTokens,
+  activeTokenImport,
+}: {
+  section: ContentPage["sections"][number];
+  page: ContentPage;
+  assets: Asset[];
+  resolvedTokens: ReturnType<typeof getResolvedTokensFromImport>;
+  activeTokenImport?: ReturnType<typeof getPublishedTokenImport>;
+}) {
   return (
     <section id={section.id} className={`doc-section section-${section.kind}`}>
       <h2>{section.title}</h2>
       {section.body && <p>{section.body}</p>}
-      {section.visualBlocks?.map((block) => <VisualBlock key={block.id} block={block} />)}
-      {section.kind === "preview" && (
-        <div className="demo-stage">
-          <PreviewGlyph page={page} />
-          <div className="demo-controls">
-            <PreviewControls />
-          </div>
-        </div>
-      )}
-      {section.kind === "tokens" && <TokenSample />}
+      {section.visualBlocks?.map((block) => (
+        <VisualBlock key={block.id} block={block} assets={assets} resolvedTokens={resolvedTokens} activeTokenImport={activeTokenImport} />
+      ))}
       {section.items && (
         <div className={section.kind === "do-dont" ? "do-dont-grid" : "guidance-grid"}>
           {section.items.map((item) => (
@@ -360,55 +417,23 @@ function DocSection({ section, page }: { section: ContentPage["sections"][number
           ))}
         </div>
       )}
-      {section.kind === "figma" && page.figmaUrl && (
-        <a className="secondary-button" href={page.figmaUrl} target="_blank" rel="noreferrer">Open in Figma <Icon name="external" /></a>
+      {section.kind === "figma" && isValidFigmaUrl(page.figmaUrl) && (
+        <a className="secondary-button" href={page.figmaUrl!} target="_blank" rel="noreferrer">Open in Figma <Icon name="external" /></a>
       )}
-      {section.kind === "figma" && !page.figmaUrl && (
-        <span className="muted-note">Add a Figma resource link from the page editor.</span>
+      {section.kind === "figma" && !isValidFigmaUrl(page.figmaUrl) && (
+        <span className="muted-note">Figma resource link will appear when configured in page settings.</span>
       )}
     </section>
   );
 }
 
-function PreviewControls() {
-  const [active, setActive] = useState("Default");
-  return <>
-    {["Default", "Dark surface"].map((label) => (
-      <button key={label} className={active === label ? "selected" : ""} onClick={() => setActive(label)} aria-pressed={active === label}>{label}</button>
-    ))}
-    <button onClick={() => setActive("Default")}>Reset</button>
-  </>;
-}
-
-function TokenSample() {
-  const rows = [["color.text.primary", "{alias.neutral.900}", "#161616"], ["color.text.secondary", "{alias.neutral.700}", "#585858"], ["color.background.primary", "{core.neutral.0}", "#FFFFFF"]];
-  const copyToken = async (name: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      pushToast("success", `${name} value copied.`);
-    } catch {
-      pushToast("error", "We couldn't copy this token. Try again.");
-    }
-  };
-  return (
-    <div className="token-table">
-      {rows.map((r) => (
-        <div key={r[0]}>
-          <i style={{ background: r[2] }} />
-          <code>{r[0]}</code>
-          <span>{r[1]}</span>
-          <b>{r[2]}</b>
-          <button onClick={() => void copyToken(r[0], r[2])} aria-label={`Copy ${r[0]}`}><Icon name="copy" /></button>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ── Asset Explorer (public, published only) ──────────────────
 
 function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const slugType = type as Asset["type"] | undefined;
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState<(typeof BRANDS)[number]>("All");
+  const [purpose, setPurpose] = useState<"all" | Asset["purpose"]>("all");
   const [selected, setSelected] = useState<Asset | null>(null);
 
   const active: Asset["type"] = slugType && ASSET_CATEGORY_MAP[slugType] ? slugType : ASSET_CATEGORIES[0].slug;
@@ -419,9 +444,9 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
   const publishedAssets = app.data.assets.filter((a) => a.status === "published");
   const categoryAssets = publishedAssets.filter((a) => a.type === active);
   const assets = categoryAssets.filter((a) =>
-     a.status === "published" &&
-     (brand === "All" || a.brand === brand) &&
-    `${a.name} ${a.category} ${a.keywords.join(" ")}`.toLowerCase().includes(lower),
+    (brand === "All" || a.brand === brand) &&
+    (purpose === "all" || a.purpose === purpose) &&
+    `${a.name} ${a.category} ${a.keywords.join(" ")} ${a.purpose}`.toLowerCase().includes(lower),
   );
 
   return (
@@ -449,15 +474,24 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
             ))}
           </div>
         )}
+        <div className="brand-filter" role="group" aria-label="Purpose filter" style={{ marginTop: 8 }}>
+          <span>Purpose</span>
+          <button className={purpose === "all" ? "active" : ""} onClick={() => setPurpose("all")} aria-pressed={purpose === "all"}>All</button>
+          {(["component-preview", "anatomy", "variant", "state", "foundation-visual", "cover-visual"] as const).map((purp) => (
+            <button key={purp} className={purpose === purp ? "active" : ""} onClick={() => setPurpose(purp)} aria-pressed={purpose === purp}>
+              {purp === "component-preview" ? "Preview" : purp === "foundation-visual" ? "Foundation" : purp.replace("-", " ")}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="asset-count">{assets.length} assets</div>
       {assets.length === 0 ? (
         <div className="empty-state">
-           <Icon name="search" />
-           <h2>{categoryAssets.length === 0 ? "No assets in this category yet" : "No matching assets"}</h2>
-           <p>{categoryAssets.length === 0
-             ? "Published assets for this category will appear here."
-             : "Try a different word or clear the filters."}</p>
+          <Icon name="search" />
+          <h2>{categoryAssets.length === 0 ? "No assets in this category yet" : "No matching assets"}</h2>
+          <p>{categoryAssets.length === 0
+            ? "Published assets for this category will appear here."
+            : "Try a different word or clear the filters."}</p>
         </div>
       ) : (
         <div className={`asset-grid ${["icon", "icon-illustration", "logo"].includes(active) ? "icon-assets" : (config?.visual ?? true) ? "visual-assets" : ""}`}>
@@ -473,7 +507,7 @@ function AssetExplorer({ app, type }: { app: AppContext; type?: string }) {
               </div>
               <div>
                 <strong>{a.name}</strong>
-                <small>{a.category}</small>
+                <small>{a.category}{a.purpose !== "general-asset" ? ` · ${a.purpose.replace("-", " ")}` : ""}</small>
                 {(a.type === "icon-illustration" || a.type === "brand-asset") && <em>{a.brand}</em>}
               </div>
             </button>
@@ -495,10 +529,11 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [close]);
   const canPreviewImage = asset.fileUrl && asset.mimeType && asset.mimeType.startsWith("image/");
-  const canDownload = Boolean(asset.fileUrl);
+  const canDownload = isDownloadAvailable(asset);
+
   return (
     <div className="drawer-backdrop" onClick={close}>
-       <aside ref={drawerRef} className="asset-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${asset.name} details`} aria-modal="true">
+      <aside ref={drawerRef} className="asset-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${asset.name} details`} aria-modal="true">
         <button className="drawer-close" onClick={close} aria-label="Close details"><Icon name="close" /></button>
         <div className={`drawer-preview preview-${bg}`} aria-hidden="true">
           {canPreviewImage ? (
@@ -514,23 +549,36 @@ function AssetDrawer({ asset, close }: { asset: Asset; close: () => void }) {
         <span className="eyebrow">{categoryLabel(asset.type)}</span>
         <h2>{asset.name}</h2>
         <p>{asset.description}</p>
+        {asset.caption && <p className="muted-note">Caption: {asset.caption}</p>}
         <dl>
           <div><dt>Category</dt><dd>{asset.category}</dd></div>
+          {asset.purpose !== "general-asset" && <div><dt>Purpose</dt><dd>{asset.purpose.replace("-", " ")}</dd></div>}
+          <div><dt>Theme</dt><dd>{asset.theme}</dd></div>
           {(asset.type === "icon-illustration" || asset.type === "brand-asset") && <div><dt>Brand</dt><dd>{asset.brand}</dd></div>}
           <div><dt>Version</dt><dd>{asset.version}</dd></div>
           <div><dt>File type</dt><dd>{asset.mimeType ?? "—"}</dd></div>
           <div><dt>File size</dt><dd>{formatFileSize(asset.fileSize)}</dd></div>
           {asset.altText && <div><dt>Alternative text</dt><dd>{asset.altText}</dd></div>}
+          {asset.figmaUrl && <div><dt>Figma</dt><dd><a href={asset.figmaUrl} target="_blank" rel="noreferrer" className="drawer-figma-link">Open in Figma</a></dd></div>}
         </dl>
-        {canDownload ? (
-          <a className="primary-button" href={asset.fileUrl!} download={asset.originalFileName ?? asset.name} target="_blank" rel="noreferrer">Download asset <Icon name="arrow" /></a>
+        {canDownload && asset.fileUrl ? (
+          <a className="primary-button" href={asset.fileUrl} download={asset.originalFileName ?? asset.name} target="_blank" rel="noreferrer">Download asset <Icon name="arrow" /></a>
+        ) : asset.fileUrl ? (
+          <p className="muted-note">Download is unavailable for this asset.</p>
         ) : (
           <p className="muted-note">This file is not available yet.</p>
+        )}
+        {asset.figmaUrl && isValidFigmaUrl(asset.figmaUrl) && (
+          <a className="secondary-button" href={asset.figmaUrl} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: "flex" }}>
+            Open in Figma <Icon name="external" />
+          </a>
         )}
       </aside>
     </div>
   );
 }
+
+// ── Resources ────────────────────────────────────────────────
 
 function Resources({ app }: { app: AppContext }) {
   const resourcePages = app.data.pages.filter((p) => p.type === "resource" && p.status === "published");
@@ -543,33 +591,44 @@ function Resources({ app }: { app: AppContext }) {
     <div className="simple-index">
       <span className="eyebrow">{collection?.eyebrow ?? "Resources"}</span>
       <h1>{collection?.title ?? "Everything you need to start designing."}</h1>
-       <div className="resource-grid">
-         {cards.map((card) => {
-           const page = resourcePages.find((p) => p.slug === card.id || p.id === card.id);
-           const isFigma = page?.slug === "figma-library";
-           const isAssetLink = page?.slug === "templates" || page?.slug === "downloads";
-           const href = page && isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : page ? `/resources/${page.slug}` : card.destination;
-           const isExternal = isFigma || card.destination.startsWith("http");
-           const unavailable = card.availability === "coming-soon" || (isFigma && !isValidFigmaUrl(page?.figmaUrl));
-           const finalHref = isFigma && isValidFigmaUrl(page?.figmaUrl) ? page!.figmaUrl : href;
-           return <ResourceCard
-             key={card.id}
-             title={page?.title ?? card.title}
-             summary={page?.summary ?? card.summary}
-             icon={card.icon ?? "layers"}
-             href={unavailable ? undefined : finalHref}
-             external={isExternal}
-             unavailable={unavailable}
-             unavailableLabel={unavailableLabel}
-             onNavigate={app.navigate}
-           />;
-         })}
-         {resourcePages.filter((p) => !cards.some((c) => c.id === p.id || c.id === p.slug)).map((page) => {
-            const isFigma = page.slug === "figma-library";
-            const isAssetLink = page.slug === "templates" || page.slug === "downloads";
-            const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
-            return <ResourceCard
+      <div className="resource-grid">
+        {cards.map((card) => {
+          const page = resourcePages.find((p) => p.slug === card.id || p.id === card.id);
+          const isFigma = page?.slug === "figma-library";
+          const isAssetLink = page?.slug === "templates" || page?.slug === "downloads";
+          const href = page && isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : page ? `/resources/${page.slug}` : card.destination;
+          const isExternal = isFigma || card.destination.startsWith("https://") || card.destination.startsWith("http://");
+          const unavailable = card.availability === "coming-soon" || (isFigma && !isValidFigmaUrl(page?.figmaUrl));
+          const finalHref = isFigma && isValidFigmaUrl(page?.figmaUrl) ? page!.figmaUrl : href;
+
+          // Validate that external URLs are only Figma, never fake hrefs
+          const hasRealHref = Boolean(finalHref && finalHref.trim() && finalHref !== "#");
+          const isRealUnavailable = unavailable || !hasRealHref;
+
+          return (
+            <ResourceCard
+              key={card.id}
+              assetId={card.assetId}
+              assets={app.data.assets}
+              title={page?.title ?? card.title}
+              summary={page?.summary ?? card.summary}
+              icon={card.icon ?? "layers"}
+              href={isRealUnavailable ? undefined : finalHref}
+              external={isExternal}
+              unavailable={isRealUnavailable}
+              unavailableLabel={unavailableLabel}
+              onNavigate={app.navigate}
+            />
+          );
+        })}
+        {resourcePages.filter((p) => !cards.some((c) => c.id === p.id || c.id === p.slug)).map((page) => {
+          const isFigma = page.slug === "figma-library";
+          const isAssetLink = page.slug === "templates" || page.slug === "downloads";
+          const href = isAssetLink ? `/resources/assets/${page.slug === "templates" ? "template" : "download"}` : `/resources/${page.slug}`;
+          return (
+            <ResourceCard
               key={page.id}
+              assets={app.data.assets}
               title={page.title}
               summary={page.summary}
               icon="layers"
@@ -578,22 +637,13 @@ function Resources({ app }: { app: AppContext }) {
               unavailable={isFigma && !isValidFigmaUrl(page.figmaUrl)}
               unavailableLabel={unavailableLabel}
               onNavigate={app.navigate}
-            />;
-          })}
-         {!cards.length && !resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published resources yet"}</h2><p>{collection?.emptyDescription ?? "Published resources will appear here."}</p></div>}
-       </div>
+            />
+          );
+        })}
+        {!cards.length && !resourcePages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published resources yet"}</h2><p>{collection?.emptyDescription ?? "Published resources will appear here."}</p></div>}
+      </div>
     </div>
   );
-}
-
-function isValidFigmaUrl(value?: string) {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "figma.com" || url.hostname.endsWith(".figma.com"));
-  } catch {
-    return false;
-  }
 }
 
 function ResourceCard({
@@ -605,6 +655,8 @@ function ResourceCard({
   unavailable = false,
   onNavigate,
   unavailableLabel,
+  assetId,
+  assets,
 }: {
   title: string;
   summary: string;
@@ -614,19 +666,37 @@ function ResourceCard({
   unavailable?: boolean;
   onNavigate: (to: string) => void;
   unavailableLabel?: string;
+  assetId?: string;
+  assets?: Asset[];
 }) {
+  const cardVisualAsset = assetId && assets ? resolveAsset(assetId, assets, { requirePublished: true }) : null;
+  const hasRealVisual = cardVisualAsset?.fileUrl && cardVisualAsset.mimeType?.startsWith("image/");
+
   const content = <>
-    <span className="resource-card-visual" aria-hidden="true"><Icon name={icon} /></span>
-     <div className="resource-card-content">
-       <h2>{title}</h2>
-       <p>{summary}</p>
-       <span className="resource-card-action">{unavailable ? (unavailableLabel ?? "Coming soon") : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
-     </div>
+    <span className="resource-card-visual" aria-hidden="true">
+      {hasRealVisual ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={cardVisualAsset!.fileUrl!} alt={cardVisualAsset!.altText || title} loading="lazy" />
+      ) : (
+        <Icon name={icon} />
+      )}
+    </span>
+    <div className="resource-card-content">
+      <h2>{title}</h2>
+      <p>{summary}</p>
+      <span className="resource-card-action">{unavailable ? (unavailableLabel ?? "Coming soon") : external ? "Open in Figma" : "Explore"} {!unavailable && <Icon name={external ? "external" : "arrow"} />}</span>
+    </div>
   </>;
+  // Resource cards marked unavailable must not be clickable
   if (unavailable) return <div className="resource-card unavailable" aria-disabled="true">{content}</div>;
+  // No fake href: external figma links use <a> with target blank only when valid URL exists
   if (external && href) return <a className="resource-card" href={href} target="_blank" rel="noreferrer">{content}</a>;
-  return <button className="resource-card" onClick={() => href && onNavigate(href)}>{content}</button>;
+  // href must exist and be valid
+  if (!href) return <div className="resource-card unavailable" aria-disabled="true">{content}</div>;
+  return <button className="resource-card" onClick={() => onNavigate(href)}>{content}</button>;
 }
+
+// ── Changelog + Editorial ───────────────────────────────────
 
 function Changelog({ app }: { app: AppContext }) {
   const releases = app.data.releases.filter((r) => r.status === "published");
@@ -650,7 +720,7 @@ function Changelog({ app }: { app: AppContext }) {
           <div className="empty-state">
             <Icon name="file" />
             <h2>No releases yet</h2>
-             <p>Published releases will appear here.</p>
+            <p>Published releases will appear here.</p>
           </div>
         )}
       </div>
@@ -671,17 +741,29 @@ function EditorialIndex({ kind, app }: { kind: string; app: AppContext }) {
       <p className="lead">{collection?.summary ?? (isDesign
         ? "Principles, getting started, and guidance for contributing to the design system."
         : "Build familiar experiences with patterns that are learned and approved.")}</p>
-       <div className="resource-grid">
-          {pages.map((page, i) => (
-            <button className="guidance-card" key={page.id} onClick={() => app.navigate(routeForPage(page))}>
-              <span className="card-index">{String(i + 1).padStart(2, "0")}</span>
-              <h2>{page.title}</h2>
-              <p>{page.summary}</p>
-              <span className="guidance-card-action">Read guidance <Icon name="arrow" /></span>
-            </button>
-         ))}
-         {!pages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2><p>{collection?.emptyDescription ?? `Published ${isDesign ? "design" : "pattern"} guidance will appear here.`}</p></div>}
-       </div>
+      <div className="resource-grid">
+        {pages.map((page, i) => (
+          <button className="guidance-card" key={page.id} onClick={() => app.navigate(routeForPage(page))}>
+            <span className="card-index">{String(i + 1).padStart(2, "0")}</span>
+            {(() => {
+              const cov = page.coverAssetId ? resolveAsset(page.coverAssetId, app.data.assets, { requirePublished: true }) : null;
+              if (cov?.fileUrl && cov.mimeType?.startsWith("image/")) {
+                return (
+                  <div className="guidance-card-visual">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={cov.fileUrl} alt={cov.altText || page.title} loading="lazy" />
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            <h2>{page.title}</h2>
+            <p>{page.summary}</p>
+            <span className="guidance-card-action">Read guidance <Icon name="arrow" /></span>
+          </button>
+        ))}
+        {!pages.length && <div className="empty-state"><Icon name="file" /><h2>{collection?.emptyTitle ?? "No published guidance yet"}</h2><p>{collection?.emptyDescription ?? `Published ${isDesign ? "design" : "pattern"} guidance will appear here.`}</p></div>}
+      </div>
     </div>
   );
 }
@@ -711,8 +793,8 @@ function SearchResults({ app, onChoose }: { app: AppContext; onChoose?: () => vo
       </label>
       {q && (
         <div>
-           {results.map((p) => (
-             <button key={p.id} onClick={() => { app.navigate(routeForPage(p)); onChoose?.(); }}>
+          {results.map((p) => (
+            <button key={p.id} onClick={() => { app.navigate(routeForPage(p)); onChoose?.(); }}>
               <span>{p.type}</span>
               <strong>{p.title}</strong>
               <p>{p.summary}</p>
@@ -736,7 +818,7 @@ function SearchDialog({ app, close }: { app: AppContext; close: () => void }) {
   }, [close]);
   return (
     <div className="search-overlay" onClick={close}>
-       <div ref={dialogRef} className="search-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search">
+      <div ref={dialogRef} className="search-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search">
         <button className="drawer-close" onClick={close} aria-label="Close search"><Icon name="close" /></button>
         <SearchResults app={app} onChoose={close} />
         <small>Press Esc to close</small>

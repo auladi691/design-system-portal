@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAdminSite, fetchPublishedSite, subscribeToAssets } from "@/lib/repository";
 import { emptySiteData } from "@/lib/empty-site-data";
-import type { Asset, ContentPage, Release, SiteData, SiteSettings } from "@/types/content";
+import type { Asset, ContentPage, Release, SiteData, SiteSettings, TokenImport } from "@/types/content";
 
 export type StoreState = {
   data: SiteData;
@@ -16,7 +16,9 @@ export type StoreState = {
   upsertPage: (page: ContentPage) => Promise<{ ok: boolean; error: string | null }>;
   upsertAsset: (asset: Asset) => Promise<{ ok: boolean; error: string | null }>;
   upsertRelease: (release: Release) => Promise<{ ok: boolean; error: string | null }>;
+  upsertTokenImport: (tokenImport: TokenImport) => Promise<{ ok: boolean; error: string | null }>;
   removeAsset: (assetId: string) => Promise<{ ok: boolean; error: string | null }>;
+  removeTokenImport: (importId: string) => Promise<{ ok: boolean; error: string | null }>;
 };
 
 export type InitialSiteData = Pick<StoreState, "data" | "error" | "isPreview">;
@@ -37,7 +39,6 @@ export function useSiteData(options: { admin?: boolean; enabled?: boolean; initi
   const reload = useCallback(async () => {
     if (!enabled) return;
     const currentRequest = ++requestId.current;
-    // Keep the server-rendered snapshot visible while the client refreshes it.
     setLoading(!readyRef.current);
     setError(null);
     const result = admin ? await fetchAdminSite() : await fetchPublishedSite();
@@ -124,6 +125,20 @@ export function useSiteData(options: { admin?: boolean; enabled?: boolean; initi
     return result;
   }, [reload]);
 
+  const upsertTokenImport = useCallback(async (tokenImport: TokenImport) => {
+    skipNext.current = true;
+    setData((current) => ({
+      ...current,
+      tokenImports: current.tokenImports.some((t) => t.id === tokenImport.id)
+        ? current.tokenImports.map((t) => (t.id === tokenImport.id ? tokenImport : t))
+        : [...current.tokenImports, tokenImport],
+    }));
+    const { saveTokenImport } = await import("@/lib/repository");
+    const result = await saveTokenImport(tokenImport);
+    await reload();
+    return result;
+  }, [reload]);
+
   const removeAsset = useCallback(async (assetId: string) => {
     skipNext.current = true;
     setData((current) => ({
@@ -132,6 +147,18 @@ export function useSiteData(options: { admin?: boolean; enabled?: boolean; initi
     }));
     const { deleteAssetRecord } = await import("@/lib/repository");
     const result = await deleteAssetRecord(assetId);
+    await reload();
+    return result;
+  }, [reload]);
+
+  const removeTokenImport = useCallback(async (importId: string) => {
+    skipNext.current = true;
+    setData((current) => ({
+      ...current,
+      tokenImports: current.tokenImports.filter((t) => t.id !== importId),
+    }));
+    const { deleteTokenImportRecord } = await import("@/lib/repository");
+    const result = await deleteTokenImportRecord(importId);
     await reload();
     return result;
   }, [reload]);
@@ -147,6 +174,8 @@ export function useSiteData(options: { admin?: boolean; enabled?: boolean; initi
     upsertPage,
     upsertAsset,
     upsertRelease,
+    upsertTokenImport,
     removeAsset,
+    removeTokenImport,
   };
 }

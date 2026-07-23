@@ -76,6 +76,7 @@ const asset = (
   slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
   category,
   brand,
+  purpose: "general-asset",
   status: "published",
   description: `${name} helps communicate meaning clearly.`,
   keywords: [name.toLowerCase(), category.toLowerCase()],
@@ -83,6 +84,10 @@ const asset = (
   version: "1.0",
   updatedAt: TODAY,
   altText: `${name} ${type.replace("-", " ")} preview`,
+  caption: "",
+  theme: "both",
+  figmaUrl: undefined,
+  downloadAvailable: true,
   filePath: null,
   fileUrl: null,
   mimeType: null,
@@ -106,6 +111,7 @@ export const emptySiteData: SiteData = {
   pages: [],
   assets: [],
   releases: [],
+  tokenImports: [],
 };
 
 export const seedData: SiteData = {
@@ -139,4 +145,5 @@ export const seedData: SiteData = {
       ],
     },
   ],
+  tokenImports: [],
 };

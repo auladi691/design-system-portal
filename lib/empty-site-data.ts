@@ -5,4 +5,5 @@ export const emptySiteData: SiteData = {
   pages: [],
   assets: [],
   releases: [],
+  tokenImports: [],
 };

@@ -92,3 +92,69 @@ export function emptyTokenLibrary(fileName = ""): TokenLibrary {
     tokens: [],
   };
 }
+
+export function validateTokenStructure(source: unknown): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return { ok: false, errors: ["Token JSON must be an object with collections"] };
+  }
+  const obj = source as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (!keys.length) return { ok: false, errors: ["Token JSON is empty"] };
+  let hasLeaf = false;
+  function hasLeafNode(node: unknown): boolean {
+    if (!node || typeof node !== "object") return false;
+    if (isTokenLeaf(node)) return true;
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      if (hasLeafNode(v)) return true;
+    }
+    return false;
+  }
+  for (const k of keys) {
+    if (hasLeafNode(obj[k])) hasLeaf = true;
+  }
+  if (!hasLeaf) errors.push("No token with { type, value } found. Check the Figma Tokens export format.");
+  return { ok: errors.length === 0, errors };
+}
+
+function extractAliasRefs(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  const refs: string[] = [];
+  const re = /\{([^}]+)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(value)) !== null) refs.push(m[1].trim());
+  return refs;
+}
+
+export function validateTokenAliases(source: unknown): { ok: boolean; brokenAliases: string[]; errors: string[] } {
+  let library: TokenLibrary;
+  try {
+    library = parseTokenLibrary(source, "import");
+  } catch (error) {
+    return { ok: false, brokenAliases: [], errors: [error instanceof Error ? error.message : "Could not parse token JSON"] };
+  }
+  const pathSet = new Set(library.tokens.map((t) => t.path));
+  const brokenAliases = new Set<string>();
+  const errors: string[] = [];
+  for (const token of library.tokens) {
+    const refs = extractAliasRefs(token.value);
+    for (const ref of refs) {
+      const candidate = ref.startsWith("$") ? ref.slice(1).replace(/\[/g, ".").replace(/\]/g, "") : ref;
+      if (!pathSet.has(candidate) && !pathSet.has(ref)) {
+        if (!brokenAliases.has(ref)) {
+          brokenAliases.add(ref);
+          errors.push(`Token "${token.path}" references "${ref}" which does not exist`);
+        }
+      }
+    }
+  }
+  return { ok: brokenAliases.size === 0, brokenAliases: [...brokenAliases], errors };
+}
+
+export type TokenValidationResult = {
+  structureOk: boolean;
+  structureErrors: string[];
+  aliasesOk: boolean;
+  brokenAliases: string[];
+  aliasErrors: string[];
+};

@@ -11,15 +11,16 @@ import { friendlyErrorMessage } from "@/lib/repository";
 import { pushToast } from "@/lib/toast";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { AppContext } from "@/components/design-system-app";
-import type { Asset, AssetType } from "@/types/content";
+import { ASSET_PURPOSE_OPTIONS, type Asset, type AssetPurpose, type AssetType } from "@/types/content";
 
 type AssetsManagerProps = { app: AppContext };
 
-const CATEGORY_TABS: { slug: "all" | AssetType; label: string }[] = ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label }));
+const CATEGORY_TABS: { slug: AssetType; label: string }[] = ASSET_CATEGORIES.map((c) => ({ slug: c.slug, label: c.label }));
 
 export function AssetsManager({ app }: AssetsManagerProps) {
   const [type, setType] = useState<AssetType>(ASSET_CATEGORIES[0].slug as AssetType);
   const [query, setQuery] = useState("");
+  const [purposeFilter, setPurposeFilter] = useState<"all" | AssetPurpose>("all");
   const [selected, setSelected] = useState<Asset | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<AssetType>("icon");
@@ -30,8 +31,13 @@ export function AssetsManager({ app }: AssetsManagerProps) {
 
   const lower = query.toLowerCase();
   const list = useMemo(
-    () => app.data.assets.filter((a) => a.type === type && `${a.name} ${a.category} ${a.brand} ${a.keywords.join(" ")}`.toLowerCase().includes(lower)),
-    [app.data.assets, type, lower],
+    () =>
+      app.data.assets.filter((a) => {
+        if (a.type !== type) return false;
+        if (purposeFilter !== "all" && a.purpose !== purposeFilter) return false;
+        return `${a.name} ${a.category} ${a.brand} ${a.purpose} ${a.keywords.join(" ")}`.toLowerCase().includes(lower);
+      }),
+    [app.data.assets, type, lower, purposeFilter],
   );
 
   const existingSlugs = useMemo(() => app.data.assets.map((a) => a.slug), [app.data.assets]);
@@ -64,6 +70,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
       slug,
       category: "General",
       brand: "Shared",
+      purpose: "general-asset",
       status: "draft",
       description: "",
       keywords: [],
@@ -71,6 +78,10 @@ export function AssetsManager({ app }: AssetsManagerProps) {
       version: "1.0",
       updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
       altText: "",
+      caption: "",
+      theme: "both",
+      figmaUrl: undefined,
+      downloadAvailable: true,
       filePath: null,
       fileUrl: null,
       mimeType: null,
@@ -232,6 +243,13 @@ export function AssetsManager({ app }: AssetsManagerProps) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search assets..." aria-label="Search assets" />
         </label>
         <div className="manager-toolbar-actions">
+          <label aria-label="Filter by purpose" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <small>Purpose</small>
+            <select value={purposeFilter} onChange={(e) => setPurposeFilter(e.target.value as Asset["purpose"] | "all")}>
+              <option value="all">All purposes</option>
+              {ASSET_PURPOSE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
           <button className="secondary-button" onClick={() => createBlank(type)} disabled={busy}>
             <Icon name="plus" />New draft
           </button>
@@ -277,7 +295,7 @@ export function AssetsManager({ app }: AssetsManagerProps) {
                     ) : <span>{a.glyph}</span>}
                   </div>
                   <strong>{a.name}</strong>
-                  <small>{a.category} · {a.brand}</small>
+                  <small>{a.category} · {a.purpose.replace("-", " ")}</small>
                   <em className={`status ${a.status}`}>{a.status}</em>
                 </button>
                 <div className="asset-card-actions">

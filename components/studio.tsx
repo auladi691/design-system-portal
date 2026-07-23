@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AppContext } from "@/components/design-system-app";
 import { Icon } from "@/components/icons";
 import { AssetsManager } from "@/components/assets-manager";
+import { AssetPicker, AssetPickerButton } from "@/components/asset-picker";
+import { PortalConfigEditor } from "@/components/portal-config-editor";
+import { TemplatePicker } from "@/components/template-picker";
+import { VisualBlock as VisualBlockRender } from "@/components/visual-block";
 import { useAuth } from "@/lib/auth";
 import { getSupabaseConfig } from "@/lib/supabase-client";
-import { routeForPage } from "@/lib/routes";
 import { pushToast } from "@/lib/toast";
-import type { ContentPage, ContentSection, PageType, Release, VisualBlock, VisualBlockKind } from "@/types/content";
-import { formatPortalConfig, parsePortalConfig } from "@/lib/portal-config";
-import { parseTokenLibrary, emptyTokenLibrary, type TokenLibrary } from "@/lib/tokens";
+import { makePageFromTemplate } from "@/lib/page-templates";
+import { getDefaultPortalConfig } from "@/lib/portal-config";
+import { parseTokenLibrary, emptyTokenLibrary, validateTokenStructure, validateTokenAliases, type TokenLibrary } from "@/lib/tokens";
+import { getResolvedTokensFromImport, getPublishedTokenImport } from "@/lib/token-resolver";
+import type { Asset, AssetTheme, ContentPage, ContentSection, GalleryItem, PageTemplateId, PageType, Release, TokenImport, VisualBlock, VisualBlockKind } from "@/types/content";
+import { VISUAL_BLOCK_KINDS_NEW, VISUAL_BLOCK_KIND_LABELS, normalizeVisualBlockKind } from "@/types/content";
 
 const studioNav = [
   ["dashboard", "grid", "Dashboard"],
@@ -91,7 +97,7 @@ export function Studio({ app }: { app: AppContext }) {
       <div className="studio-main">
         {section === "dashboard" ? <Dashboard app={app} />
           : section === "content" ? <ContentManager app={app} parts={parts} />
-          : section === "tokens" ? <Tokens />
+          : section === "tokens" ? <TokensManager app={app} />
           : section === "assets" ? <AssetsManager app={app} />
           : section === "releases" ? <ReleasesManager app={app} />
           : section === "feedback" ? <Feedback />
@@ -171,6 +177,7 @@ function StudioHeader({ eyebrow, title, action }: { eyebrow: string; title: stri
 
 function Dashboard({ app }: { app: AppContext }) {
   const drafts = app.data.pages.filter((p) => p.status === "draft");
+  const draftAssets = app.data.assets.filter((a) => a.status === "draft");
   return (
     <div className="studio-page">
       <StudioHeader
@@ -193,9 +200,9 @@ function Dashboard({ app }: { app: AppContext }) {
         </article>
         <article className="content-card">
           <span className="eyebrow">Token library</span>
-          <div className="big-number">2,711</div>
+          <div className="big-number">{app.data.tokenImports.length ? app.data.tokenImports.reduce((sum, imp) => sum + (imp.summary.total || 0), 0).toLocaleString() : "—"}</div>
           <h2>Tokens available</h2>
-          <p>21 descriptions complete · 840 references found</p>
+          <p>{app.data.tokenImports.filter((t) => t.status === "published").length} published versions · {draftAssets.length} draft assets</p>
           <button onClick={() => app.navigate("/studio/tokens")}>Open tokens <Icon name="arrow" /></button>
         </article>
       </section>
@@ -206,7 +213,11 @@ function Dashboard({ app }: { app: AppContext }) {
             <h2>Keep the system healthy.</h2>
           </div>
         </div>
-        {[["3 pages", "Missing accessibility guidance", "/studio/content"], ["12 assets", "Need alternative text", "/studio/assets"], ["1 token import", "Ready to review", "/studio/tokens"]].map(([n, t, href]) => (
+        {[
+          [`${drafts.length} pages`, "Draft documentation needs review", "/studio/content"],
+          [`${draftAssets.length} assets`, "Draft assets waiting to be published", "/studio/assets"],
+          [`${app.data.tokenImports.filter((t) => t.status === "draft").length} token imports`, "Token imports ready to review", "/studio/tokens"],
+        ].map(([n, t, href]) => (
           <button key={t} onClick={() => app.navigate(href)}><strong>{n}</strong><span>{t}</span><Icon name="chevron" /></button>
         ))}
       </section>
@@ -232,16 +243,20 @@ function Dashboard({ app }: { app: AppContext }) {
 function ContentManager({ app, parts }: { app: AppContext; parts: string[] }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [newFromTemplate, setNewFromTemplate] = useState<ContentPage | null>(null);
   const pageId = parts[2];
-  if (pageId === "new") return <PageEditor app={app} />;
+  if (pageId === "new") {
+    return <PageEditor app={app} initial={newFromTemplate ?? undefined} />;
+  }
   if (pageId && parts[3] === "edit") {
     const page = app.data.pages.find((p) => p.id === pageId);
-    return page ? <PageEditor app={app} initial={page} /> : null;
+    return page ? <PageEditor app={app} initial={page} /> : <div className="studio-page"><p className="muted-note">Page not found.</p></div>;
   }
   const list = app.data.pages.filter((p) => (type === "all" || p.type === type) && `${p.title} ${p.category}`.toLowerCase().includes(query.toLowerCase()));
   return (
     <div className="studio-page">
-      <StudioHeader eyebrow="Content" title="Documentation" action={<button className="primary-button" onClick={() => app.navigate("/studio/content/new")}><Icon name="plus" />New page</button>} />
+      <StudioHeader eyebrow="Content" title="Documentation" action={<button className="primary-button" onClick={() => setShowTemplates(true)}><Icon name="plus" />New page</button>} />
       <div className="manager-toolbar">
         <label className="search-field">
           <Icon name="search" />
@@ -280,26 +295,51 @@ function ContentManager({ app, parts }: { app: AppContext; parts: string[] }) {
           <p>Create your first page to start documenting the design system.</p>
         </div>
       )}
+
+      {showTemplates && (
+        <TemplatePicker
+          onSelect={(templateId) => {
+            const templatedPage = makePageFromTemplate(templateId);
+            const id = crypto.randomUUID();
+            const newPage: ContentPage = { ...templatedPage, id, slug: `${templatedPage.slug}-${id.slice(0, 8)}` };
+            setNewFromTemplate(newPage);
+            setShowTemplates(false);
+            app.navigate("/studio/content/new");
+          }}
+          onClose={() => setShowTemplates(false)}
+        />
+      )}
     </div>
   );
 }
 
 function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }) {
   const isNew = !initial;
-  const [page, setPage] = useState<ContentPage>(() => structuredClone(initial ?? makeNewPageTemplate()));
+  const [showRawJson, setShowRawJson] = useState(false);
+  const [rawJsonText, setRawJsonText] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [page, setPage] = useState<ContentPage>(() => {
+    if (initial) return structuredClone(initial);
+    return makeNewPageTemplate();
+  });
   const [selected, setSelected] = useState<string | null>(page.sections[0]?.id || null);
-  const [saved, setSaved] = useState(true);
+  const [saved, setSaved] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const [showTemplatesInEditor, setShowTemplatesInEditor] = useState(false);
 
-  const update = (patch: Partial<ContentPage>) => { setPage((p) => ({ ...p, ...patch })); setSaved(false); };
+  const updatePage = (patch: Partial<ContentPage>) => { setPage((p) => ({ ...p, ...patch })); setSaved(false); };
+  const markDirty = () => setSaved(false);
+
   const save = async (publish = false) => {
     if (saving) return;
     setSaving(true);
     const next: ContentPage = {
       ...page,
-      status: publish ? "published" as const : page.status,
+      status: publish ? "published" as const : page.status === "archived" ? "draft" as const : page.status,
       updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     };
+    if (publish) next.status = "published";
     try {
       const result = await app.upsertPage(next);
       if (!result.ok) throw new Error(result.error ?? "We couldn't save this page.");
@@ -313,7 +353,88 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
       setSaving(false);
     }
   };
+
+  const unpublish = async () => {
+    setSaving(true);
+    try {
+      const result = await app.upsertPage({ ...page, status: "draft", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't unpublish this page.");
+      setPage({ ...page, status: "draft" });
+      pushToast("success", "Page moved to draft.");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't unpublish this page.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const archive = async () => {
+    if (!confirm(`Archive ${page.title}? Drafts and archived items never appear in the Portal.`)) return;
+    setSaving(true);
+    try {
+      const result = await app.upsertPage({ ...page, status: "archived", updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't archive this page.");
+      pushToast("success", "Page archived.");
+      app.navigate("/studio/content");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't archive this page.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const section = page.sections.find((s) => s.id === selected);
+
+  const moveSection = (sectionId: string, dir: -1 | 1) => {
+    const idx = page.sections.findIndex((s) => s.id === sectionId);
+    if (idx === -1) return;
+    const dest = idx + dir;
+    if (dest < 0 || dest >= page.sections.length) return;
+    const arr = [...page.sections];
+    const [removed] = arr.splice(idx, 1);
+    arr.splice(dest, 0, removed);
+    setPage({ ...page, sections: arr });
+    setSaved(false);
+  };
+
+  const addSection = (kind?: ContentSection["kind"], title?: string) => {
+    const id = `section-${crypto.randomUUID()}`;
+    const newSection: ContentSection = {
+      id,
+      kind: (kind ?? "rich-text") as ContentSection["kind"],
+      title: title ?? "New section",
+      body: kind === "overview" ? "Explain what this page is about." : "Add clear guidance for designers.",
+    };
+    setPage({ ...page, sections: [...page.sections, newSection] });
+    setSelected(id);
+    setSaved(false);
+  };
+
+  const addRecommended = (templateId?: PageTemplateId) => {
+    if (templateId) {
+      const tpl = makePageFromTemplate(templateId);
+      setPage({ ...page, sections: tpl.sections });
+      setSelected(tpl.sections[0]?.id ?? null);
+      setSaved(false);
+      return;
+    }
+    const names = page.type === "component"
+      ? ["Overview", "Design preview", "Interactive preview", "Anatomy", "Variants", "Sizes", "States", "Behavior", "Content guidelines", "Responsive behavior", "Accessibility", "Do & don't", "Related components", "Figma resource", "Changelog"]
+      : page.type === "pattern"
+        ? ["Overview", "Problem and context", "When to use", "When not to use", "User flow", "Component composition", "Behavior", "Responsive behavior", "Edge cases", "Accessibility", "Do & don't", "Related patterns or components", "Figma resource", "Changelog"]
+        : page.type === "resource"
+          ? ["Overview", "Cover preview", "What's included", "Asset gallery", "Usage guidelines", "Available formats", "Availability", "Download or Open in Figma", "License or restrictions", "Related resources", "Changelog"]
+          : ["Overview", "Principles", "Token collection", "Visual reference", "Usage", "Examples", "Accessibility", "Do & don't", "Related foundations", "Figma resource", "Changelog"];
+    const sections = names.map((n, i) => ({
+      id: `section-${crypto.randomUUID()}`,
+      kind: (i === 0 ? "overview" : "rich-text") as ContentSection["kind"],
+      title: n,
+      body: "Add clear guidance for designers. This placeholder will not appear in production — replace it with real content.",
+    }));
+    setPage({ ...page, sections });
+    setSelected(sections[0]?.id ?? null);
+    setSaved(false);
+  };
 
   return (
     <div className="editor-shell">
@@ -322,41 +443,72 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
           <button onClick={() => app.navigate("/studio/content")}>Content</button>
           <span>/</span>
           <strong>{page.title}</strong>
+          <em className={`status ${page.status}`} style={{ marginLeft: 10, fontSize: 10 }}>{page.status}</em>
         </div>
         <div className="save-state">
           <span className={saved ? "saved" : "unsaved"} />
           {saved ? "Saved" : "Unsaved changes"}
         </div>
         <div>
-           <button className="secondary-button" onClick={() => { const preview = window.open(routeForPage(page), "_blank"); if (preview) preview.opener = null; }} disabled={saving || page.status !== "published"} title={page.status !== "published" ? "Publish this page before previewing it" : undefined}>Preview</button>
-           <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish"}</button>
+          <button className="secondary-button" onClick={() => setPreviewOpen(true)}><Icon name="layers" />Preview</button>
+          <button className="secondary-button" onClick={() => void save(false)} disabled={saved || saving}>{saving ? "Saving..." : saved ? "Saved" : "Save draft"}</button>
+          {page.status === "published" ? (
+            <button className="secondary-button" onClick={() => void unpublish()} disabled={saving}>Unpublish</button>
+          ) : (
+            <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish page"}</button>
+          )}
+          <button className="text-button" onClick={() => void archive()} disabled={saving} title="Archive"><Icon name="trash" /></button>
         </div>
       </header>
       <aside className="editor-outline">
         <div>
           <span>Page outline</span>
-          <button onClick={() => addSection(page, setPage, setSelected)} aria-label="Add section"><Icon name="plus" /></button>
+          <button onClick={() => addSection()} aria-label="Add section"><Icon name="plus" /></button>
         </div>
         {page.sections.map((s, i) => (
-          <button key={s.id} className={selected === s.id ? "active" : ""} onClick={() => setSelected(s.id)}>
-            <span>{String(i + 1).padStart(2, "0")}</span>
-            {s.title}
-            <i />
-          </button>
+          <div key={s.id} className={`editor-outline-row ${selected === s.id ? "active" : ""}`}>
+            <button className="editor-outline-item" onClick={() => setSelected(s.id)}>
+              <span>{String(i + 1).padStart(2, "0")}</span>
+              {s.title}
+              <i />
+            </button>
+            <div className="editor-outline-actions">
+              <button onClick={(e) => { e.stopPropagation(); moveSection(s.id, -1); }} title="Move up" aria-label="Move section up"><Icon name="chevron" /></button>
+              <button onClick={(e) => { e.stopPropagation(); moveSection(s.id, 1); }} title="Move down" aria-label="Move section down" className="move-down"><Icon name="chevron" /></button>
+            </div>
+          </div>
         ))}
         {!page.sections.length && (
           <div className="outline-empty">
             <p>No sections yet.</p>
-            <button onClick={() => addRecommended(page, setPage, setSelected)}>Add recommended sections</button>
+            <button onClick={() => addRecommended()}>Add recommended sections</button>
+            <button onClick={() => setShowTemplatesInEditor(true)} className="text-button">Start from a template</button>
           </div>
+        )}
+        {showTemplatesInEditor && (
+          <TemplatePicker
+            onSelect={(id) => { addRecommended(id); setShowTemplatesInEditor(false); }}
+            onClose={() => setShowTemplatesInEditor(false)}
+          />
         )}
       </aside>
       <main className="editor-canvas">
         <div className="editable-header">
           <span className="eyebrow">{page.category}</span>
-          <input className="title-input" value={page.title} onChange={(e) => update({ title: e.target.value, slug: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-") })} />
-          <textarea value={page.summary} onChange={(e) => update({ summary: e.target.value })} />
+          <input className="title-input" value={page.title} onChange={(e) => updatePage({ title: e.target.value, slug: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-") })} placeholder="Page title" />
+          <textarea value={page.summary} onChange={(e) => updatePage({ summary: e.target.value })} placeholder="Short summary that helps designers decide whether this page answers their question." />
           <div className="meta-row"><span className="status-dot" />{page.maturity}<span>v{page.version}</span></div>
+          <div className="page-meta-bar">
+            <button className="secondary-button small" onClick={() => setShowCoverPicker(true)}>
+              <Icon name="image" /> {page.coverAssetId ? "Change cover visual" : "Select cover visual"}
+            </button>
+            {page.coverAssetId && (
+              <span className="muted-note">
+                <AssetPickerButton assetId={page.coverAssetId} assets={app.data.assets} onOpen={() => setShowCoverPicker(true)} label="Select cover visual" />
+                <button className="text-button small" onClick={() => updatePage({ coverAssetId: undefined })}><Icon name="close" /> Remove</button>
+              </span>
+            )}
+          </div>
         </div>
         {page.sections.map((s) => (
           <button className={`editable-block ${selected === s.id ? "selected" : ""}`} key={s.id} onClick={() => setSelected(s.id)}>
@@ -364,94 +516,434 @@ function PageEditor({ app, initial }: { app: AppContext; initial?: ContentPage }
             <span className="block-type">{s.kind}</span>
             <h2>{s.title}</h2>
             {s.body && <p>{s.body}</p>}
-            {s.items && <div className="mini-item-grid">{s.items.map((i) => <span key={i.title}>{i.title}</span>)}</div>}
+            {s.items && <div className="mini-item-grid">{s.items.map((it) => <span key={it.title}>{it.title}</span>)}</div>}
+            {s.visualBlocks?.length ? <div className="mini-visual-count">{s.visualBlocks.length} visual block{s.visualBlocks.length === 1 ? "" : "s"}</div> : null}
           </button>
         ))}
-        <button className="add-block" onClick={() => addSection(page, setPage, setSelected)}><Icon name="plus" />Add a section</button>
+        <div className="editor-add-actions">
+          <button className="add-block" onClick={() => addSection()}><Icon name="plus" />Add a section</button>
+          <button className="text-button" onClick={() => addRecommended()}><Icon name="layers" />Add recommended sections</button>
+        </div>
       </main>
       <aside className="editor-properties">
         {section ? (
-          <SectionProperties section={section} page={page} setPage={setPage} onDelete={() => {
-            const next = { ...page, sections: page.sections.filter((s) => s.id !== section.id) };
-            setPage(next);
-            setSaved(false);
-            setSelected(next.sections[0]?.id ?? null);
-          }} markDirty={() => setSaved(false)} />
+          <SectionProperties
+            section={section}
+            page={page}
+            setPage={(p) => { setPage(p); setSaved(false); }}
+            onDelete={() => {
+              const nextSections = page.sections.filter((s) => s.id !== section.id);
+              setPage({ ...page, sections: nextSections });
+              setSaved(false);
+              setSelected(nextSections[0]?.id ?? null);
+            }}
+            markDirty={markDirty}
+            assets={app.data.assets}
+            tokenImports={app.data.tokenImports}
+          />
         ) : (
-          <PageProperties page={page} update={update} />
+          <PageProperties page={page} update={updatePage} assets={app.data.assets} />
         )}
+
+        {showRawJson && (
+          <div className="raw-json-panel">
+            <span className="eyebrow">Details — JSON</span>
+            <textarea
+              rows={22}
+              value={rawJsonText || JSON.stringify(page, null, 2)}
+              onChange={(e) => setRawJsonText(e.target.value)}
+              aria-label="Raw page JSON"
+            />
+            <div className="raw-json-actions">
+              <button className="secondary-button" onClick={() => setRawJsonText(JSON.stringify(page, null, 2))}>Reset</button>
+              <button className="primary-button" onClick={() => {
+                try {
+                  const parsed = JSON.parse(rawJsonText) as ContentPage;
+                  if (!parsed.id || !parsed.title || !Array.isArray(parsed.sections)) throw new Error("Page must have id, title, and sections array");
+                  setPage(parsed);
+                  setSaved(false);
+                  pushToast("success", "Page updated from JSON. Save to persist.");
+                } catch (e) {
+                  pushToast("error", e instanceof Error ? e.message : "Invalid JSON");
+                }
+              }}>Apply</button>
+            </div>
+          </div>
+        )}
+        <div className="properties-footer">
+          <button className="text-button small" onClick={() => { setRawJsonText(JSON.stringify(page, null, 2)); setShowRawJson(!showRawJson); }}>
+            {showRawJson ? "Hide details" : "Show details (JSON)"}
+          </button>
+        </div>
       </aside>
       <div className="editor-save-bar">
-         <button className="secondary-button" onClick={() => void save(false)} disabled={saved || saving}>{saving ? "Saving..." : saved ? "Saved" : "Save draft"}</button>
-         <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish page"}</button>
+        <button className="secondary-button" onClick={() => void save(false)} disabled={saved || saving}>{saving ? "Saving..." : saved ? "Saved" : "Save draft"}</button>
+        <button className="primary-button" onClick={() => void save(true)} disabled={saving}>{saving ? "Publishing..." : "Publish page"}</button>
       </div>
+
+      {showCoverPicker && (
+        <AssetPicker
+          assets={app.data.assets}
+          onSelect={(asset) => { updatePage({ coverAssetId: asset.id }); setShowCoverPicker(false); }}
+          onClose={() => setShowCoverPicker(false)}
+          selectedId={page.coverAssetId}
+          title="Choose cover visual"
+          allowClear
+          onClear={() => { updatePage({ coverAssetId: undefined }); setShowCoverPicker(false); }}
+        />
+      )}
+
+      {previewOpen && (
+        <PortalPreviewDrawer page={page} assets={app.data.assets} tokenImports={app.data.tokenImports} onClose={() => setPreviewOpen(false)} />
+      )}
     </div>
   );
 }
 
-function SectionProperties({ section, page, setPage, onDelete, markDirty }: { section: ContentSection; page: ContentPage; setPage: (p: ContentPage) => void; onDelete: () => void; markDirty: () => void }) {
+function SectionProperties({
+  section,
+  page,
+  setPage,
+  onDelete,
+  markDirty,
+  assets,
+  tokenImports,
+}: {
+  section: ContentSection;
+  page: ContentPage;
+  setPage: (p: ContentPage) => void;
+  onDelete: () => void;
+  markDirty: () => void;
+  assets: Asset[];
+  tokenImports: TokenImport[];
+}) {
   const update = (patch: Partial<ContentSection>) => { setPage({ ...page, sections: page.sections.map((s) => (s.id === section.id ? { ...s, ...patch } : s)) }); markDirty(); };
+
   const addVisualBlock = (kind: VisualBlockKind) => {
-    const block: VisualBlock = { id: crypto.randomUUID(), kind, label: "" };
+    const normalized = normalizeVisualBlockKind(kind);
+    const block: VisualBlock = { id: crypto.randomUUID(), kind: normalized as VisualBlockKind, label: "", items: kind.endsWith("gallery") || kind === "anatomy" || kind === "do-dont" || kind === "flow-diagram" ? [] : undefined };
     update({ visualBlocks: [...(section.visualBlocks ?? []), block] });
   };
+
+  const duplicateBlock = (blockId: string) => {
+    const blocks = section.visualBlocks ?? [];
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx === -1) return;
+    const copy = { ...structuredClone(blocks[idx]), id: crypto.randomUUID() };
+    const next = [...blocks.slice(0, idx + 1), copy, ...blocks.slice(idx + 1)];
+    update({ visualBlocks: next });
+  };
+
+  const reorderBlock = (blockId: string, dir: -1 | 1) => {
+    const blocks = [...(section.visualBlocks ?? [])];
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx === -1) return;
+    const dest = idx + dir;
+    if (dest < 0 || dest >= blocks.length) return;
+    const [removed] = blocks.splice(idx, 1);
+    blocks.splice(dest, 0, removed);
+    update({ visualBlocks: blocks });
+  };
+
   const updateVisualBlock = (id: string, patch: Partial<VisualBlock>) => {
     update({ visualBlocks: section.visualBlocks?.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   };
+
   const removeVisualBlock = (id: string) => {
     update({ visualBlocks: section.visualBlocks?.filter((b) => b.id !== id) });
   };
+
+  const addGalleryItem = (blockId: string) => {
+    const block = section.visualBlocks?.find((b) => b.id === blockId);
+    if (!block) return;
+    const item: GalleryItem = { id: crypto.randomUUID(), name: "New item", description: "", order: (block.items?.length ?? 0) };
+    updateVisualBlock(blockId, { items: [...(block.items ?? []), item] });
+  };
+
+  const updateGalleryItem = (blockId: string, itemId: string, patch: Partial<GalleryItem>) => {
+    const block = section.visualBlocks?.find((b) => b.id === blockId);
+    if (!block) return;
+    updateVisualBlock(blockId, { items: block.items?.map((it) => it.id === itemId ? { ...it, ...patch } : it) });
+  };
+
+  const removeGalleryItem = (blockId: string, itemId: string) => {
+    const block = section.visualBlocks?.find((b) => b.id === blockId);
+    if (!block) return;
+    updateVisualBlock(blockId, { items: block.items?.filter((it) => it.id !== itemId) });
+  };
+
+  const reorderGalleryItem = (blockId: string, itemId: string, dir: -1 | 1) => {
+    const block = section.visualBlocks?.find((b) => b.id === blockId);
+    if (!block?.items) return;
+    const idx = block.items.findIndex((it) => it.id === itemId);
+    if (idx === -1) return;
+    const dest = idx + dir;
+    if (dest < 0 || dest >= block.items.length) return;
+    const arr = [...block.items];
+    const [removed] = arr.splice(idx, 1);
+    arr.splice(dest, 0, removed);
+    updateVisualBlock(blockId, { items: arr });
+  };
+
+  const publishedTokens = getPublishedTokenImport(tokenImports);
+  const resolvedTokens = useMemo(() => (publishedTokens ? getResolvedTokensFromImport(publishedTokens) : []), [publishedTokens]);
+
   return (
     <div className="properties-form">
       <span className="eyebrow">Section</span>
       <h2>{section.title}</h2>
       <label>Section title<input value={section.title} onChange={(e) => update({ title: e.target.value })} /></label>
+      <label>Section type
+        <select value={section.kind} onChange={(e) => update({ kind: e.target.value as ContentSection["kind"] })}>
+          <option value="overview">Overview</option>
+          <option value="preview">Preview</option>
+          <option value="anatomy">Anatomy</option>
+          <option value="variants">Variants</option>
+          <option value="sizes">Sizes</option>
+          <option value="states">States</option>
+          <option value="behavior">Behavior</option>
+          <option value="content">Content guidelines</option>
+          <option value="responsive">Responsive behavior</option>
+          <option value="accessibility">Accessibility</option>
+          <option value="do-dont">Do and don&apos;t</option>
+          <option value="tokens">Token collection</option>
+          <option value="related">Related</option>
+          <option value="figma">Figma resource</option>
+          <option value="changelog">Changelog</option>
+          <option value="rich-text">Rich text</option>
+        </select>
+      </label>
       <label>Guidance<textarea rows={8} value={section.body || ""} onChange={(e) => update({ body: e.target.value })} placeholder="Write clear guidance for designers..." /></label>
+
       <div className="property-group">
-        <span>Visual blocks</span>
-        {section.visualBlocks?.map((block) => (
-          <div key={block.id} className="visual-block-editor">
-            <select value={block.kind} onChange={(e) => updateVisualBlock(block.id, { kind: e.target.value as VisualBlockKind })}>
-              <option value="component-preview">Component preview</option>
-              <option value="token-swatch">Token swatch</option>
-              <option value="typography-specimen">Typography specimen</option>
-              <option value="spacing-specimen">Spacing specimen</option>
-              <option value="icon-construction">Icon construction</option>
-              <option value="state-comparison">State comparison</option>
-              <option value="anatomy-diagram">Anatomy diagram</option>
-              <option value="do-dont-comparison">Do/don’t comparison</option>
-              <option value="flow-diagram">Flow diagram</option>
-              <option value="asset-preview">Asset preview</option>
-            </select>
-            <input value={block.label} onChange={(e) => updateVisualBlock(block.id, { label: e.target.value })} placeholder="Label for this visual block" aria-label="Visual block label" />
-            <button className="danger-button small" onClick={() => removeVisualBlock(block.id)}><Icon name="trash" />Remove</button>
-          </div>
-        ))}
+        <div className="property-group-head">
+          <span>Visual blocks</span>
+          <small className="muted-note">{(section.visualBlocks?.length ?? 0)} block{(section.visualBlocks?.length ?? 0) === 1 ? "" : "s"}</small>
+        </div>
+        {section.visualBlocks?.map((block) => {
+          const normalized = normalizeVisualBlockKind(block.kind);
+          return (
+            <VisualBlockEditor
+              key={block.id}
+              block={block}
+              normalized={normalized}
+              assets={assets}
+              onUpdate={(patch) => updateVisualBlock(block.id, patch)}
+              onDuplicate={() => duplicateBlock(block.id)}
+              onRemove={() => removeVisualBlock(block.id)}
+              onReorder={(dir) => reorderBlock(block.id, dir)}
+              onAddItem={() => addGalleryItem(block.id)}
+              onUpdateItem={(itemId, patch) => updateGalleryItem(block.id, itemId, patch)}
+              onRemoveItem={(itemId) => removeGalleryItem(block.id, itemId)}
+              onReorderItem={(itemId, dir) => reorderGalleryItem(block.id, itemId, dir)}
+              resolvedTokens={resolvedTokens}
+              publishedTokenImport={publishedTokens}
+              tokenImports={tokenImports}
+            />
+          );
+        })}
         <div className="add-visual-block-group">
           <span>Add visual block</span>
           <div className="visual-block-type-grid">
-            {(["component-preview","token-swatch","typography-specimen","spacing-specimen","icon-construction","state-comparison","anatomy-diagram","do-dont-comparison","flow-diagram","asset-preview"] as VisualBlockKind[]).map((kind) => (
+            {VISUAL_BLOCK_KINDS_NEW.map((kind) => (
               <button key={kind} className="visual-block-type-btn" onClick={() => addVisualBlock(kind)}>
-                {kind === "component-preview" ? "Preview" : kind === "token-swatch" ? "Swatch" : kind === "typography-specimen" ? "Type" : kind === "spacing-specimen" ? "Space" : kind === "icon-construction" ? "Icons" : kind === "state-comparison" ? "States" : kind === "anatomy-diagram" ? "Anatomy" : kind === "do-dont-comparison" ? "Do/Don't" : kind === "flow-diagram" ? "Flow" : "Asset"}
+                {VISUAL_BLOCK_KIND_LABELS[kind]}
               </button>
             ))}
           </div>
         </div>
       </div>
+
       <div className="property-group">
         <span>Visibility</span>
         <button className="option-row"><span>Visible on portal</span><i className="toggle on" /></button>
       </div>
       <div className="writing-tip">
         <strong>Writing tip</strong>
-        <p>Use short sentences. Explain what to do and why.</p>
+        <p>Cover visuals and block previews use real uploaded assets. Preview in Studio to check how they look on Portal.</p>
       </div>
-      <button className="danger-button" onClick={onDelete}><Icon name="trash" />Remove block</button>
+      <button className="danger-button" onClick={onDelete}><Icon name="trash" />Remove section</button>
     </div>
   );
 }
 
-function PageProperties({ page, update }: { page: ContentPage; update: (p: Partial<ContentPage>) => void }) {
+function VisualBlockEditor({
+  block,
+  normalized,
+  assets,
+  onUpdate,
+  onDuplicate,
+  onRemove,
+  onReorder,
+  onAddItem,
+  onUpdateItem,
+  onRemoveItem,
+  onReorderItem,
+  resolvedTokens,
+}: {
+  block: VisualBlock;
+  normalized: string;
+  assets: Asset[];
+  onUpdate: (patch: Partial<VisualBlock>) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+  onReorder: (dir: -1 | 1) => void;
+  onAddItem: () => void;
+  onUpdateItem: (itemId: string, patch: Partial<GalleryItem>) => void;
+  onRemoveItem: (itemId: string) => void;
+  onReorderItem: (itemId: string, dir: -1 | 1) => void;
+  resolvedTokens: { path: string; type: string; value: unknown; description?: string; ref?: string; resolvedValue: unknown }[];
+  publishedTokenImport?: TokenImport | null;
+  tokenImports: TokenImport[];
+}) {
+  const [pickAssetForBlock, setPickAssetForBlock] = useState(false);
+  const [pickAssetForItem, setPickAssetForItem] = useState<string | null>(null);
+  const kindLabel = VISUAL_BLOCK_KIND_LABELS[block.kind as keyof typeof VISUAL_BLOCK_KIND_LABELS] ?? normalized;
+
+  const isGalleryKind = ["asset-gallery", "variant-gallery", "state-gallery", "anatomy", "do-dont", "flow-diagram", "typography-specimen", "spacing-specimen", "icon-construction"].includes(normalized);
+  const isSingleAssetKind = ["design-preview"].includes(normalized);
+  const isTokenKind = normalized === "token-reference";
+  const isInteractiveKind = normalized === "interactive-preview";
+
+  const selectedAssetId = block.assetId;
+  const items = block.items ?? [];
+
+  return (
+    <div className="visual-block-editor">
+      <div className="visual-block-editor-head">
+        <select value={block.kind} onChange={(e) => onUpdate({ kind: e.target.value as VisualBlock["kind"] })}>
+          {VISUAL_BLOCK_KINDS_NEW.map((k) => <option key={k} value={k}>{VISUAL_BLOCK_KIND_LABELS[k]}</option>)}
+        </select>
+        <div className="visual-block-editor-actions">
+          <button className="text-button small" onClick={() => onReorder(-1)} title="Move up"><Icon name="chevron" /></button>
+          <button className="text-button small" onClick={() => onReorder(1)} title="Move down" style={{ transform: "rotate(180deg)" }}><Icon name="chevron" /></button>
+          <button className="text-button small" onClick={onDuplicate} title="Duplicate"><Icon name="copy" /></button>
+          <button className="danger-button small" onClick={onRemove}><Icon name="trash" /></button>
+        </div>
+      </div>
+      <small className="muted-note">{kindLabel}</small>
+      <input value={block.label} onChange={(e) => onUpdate({ label: e.target.value })} placeholder="Block label" aria-label="Visual block label" />
+      <input value={block.caption ?? ""} onChange={(e) => onUpdate({ caption: e.target.value || undefined })} placeholder="Caption" aria-label="Caption" />
+      <input value={block.altText ?? ""} onChange={(e) => onUpdate({ altText: e.target.value || undefined })} placeholder="Alternative text" aria-label="Alternative text" />
+
+      {isSingleAssetKind && (
+        <>
+          <AssetPickerButton assetId={selectedAssetId} assets={assets} onOpen={() => setPickAssetForBlock(true)} label="Select visual" />
+          {selectedAssetId && <button className="text-button small" onClick={() => onUpdate({ assetId: undefined })}><Icon name="close" /> Remove asset</button>}
+          <div className="visual-block-extra-fields">
+            <input value={block.variant ?? ""} onChange={(e) => onUpdate({ variant: e.target.value || undefined })} placeholder="Variant (e.g. Primary)" />
+            <input value={block.size ?? ""} onChange={(e) => onUpdate({ size: e.target.value || undefined })} placeholder="Size (e.g. Medium)" />
+            <input value={block.state ?? ""} onChange={(e) => onUpdate({ state: e.target.value || undefined })} placeholder="State (e.g. Default)" />
+            <select value={block.theme ?? "both"} onChange={(e) => onUpdate({ theme: e.target.value as AssetTheme })}>
+              <option value="both">Theme: both</option>
+              <option value="light">Theme: light</option>
+              <option value="dark">Theme: dark</option>
+            </select>
+            <input value={block.figmaUrl ?? ""} onChange={(e) => onUpdate({ figmaUrl: e.target.value || undefined })} placeholder="Figma URL" />
+            <label className="inline-check"><input type="checkbox" checked={block.downloadEnabled ?? true} onChange={(e) => onUpdate({ downloadEnabled: e.target.checked })} /> Allow download</label>
+          </div>
+        </>
+      )}
+
+      {isInteractiveKind && (
+        <div className="visual-block-extra-fields">
+          <input value={block.componentSlug ?? ""} onChange={(e) => onUpdate({ componentSlug: e.target.value || undefined })} placeholder="Component slug (button, input, card)" />
+          <input value={block.variant ?? ""} onChange={(e) => onUpdate({ variant: e.target.value || undefined })} placeholder="Variant" />
+          <input value={block.size ?? ""} onChange={(e) => onUpdate({ size: e.target.value || undefined })} placeholder="Size" />
+          <input value={block.state ?? ""} onChange={(e) => onUpdate({ state: e.target.value || undefined })} placeholder="State" />
+          <input value={block.iconName ?? ""} onChange={(e) => onUpdate({ iconName: e.target.value || undefined })} placeholder="Icon name" />
+          <label className="inline-check"><input type="checkbox" checked={Boolean(block.disabled)} onChange={(e) => onUpdate({ disabled: e.target.checked })} /> Disabled</label>
+          <label className="inline-check"><input type="checkbox" checked={Boolean(block.loading)} onChange={(e) => onUpdate({ loading: e.target.checked })} /> Loading</label>
+        </div>
+      )}
+
+      {isTokenKind && (
+        <div className="token-reference-editor">
+          <small className="muted-note">Select tokens from published library — never type values manually.</small>
+          {resolvedTokens.length === 0 ? (
+            <p className="muted-note">No published token version available. Import and publish tokens first.</p>
+          ) : (
+            <>
+              <div className="token-picker-list">
+                {resolvedTokens.slice(0, 100).map((t) => (
+                  <label key={t.path} className="token-picker-check">
+                    <input
+                      type="checkbox"
+                      checked={block.tokenNames?.includes(t.path) ?? false}
+                      onChange={(e) => {
+                        const existing = block.tokenNames ?? [];
+                        onUpdate({ tokenNames: e.target.checked ? [...existing, t.path] : existing.filter((p) => p !== t.path) });
+                      }}
+                    />
+                    <span className="token-picker-name">{t.path}</span>
+                    <small>{typeof t.resolvedValue === "string" ? t.resolvedValue : ""}</small>
+                  </label>
+                ))}
+                {resolvedTokens.length > 100 && <small className="muted-note">Showing first 100 tokens. Search or refine your selection.</small>}
+              </div>
+              {block.tokenNames?.length ? <small className="muted-note">{block.tokenNames.length} token{block.tokenNames.length === 1 ? "" : "s"} selected</small> : null}
+            </>
+          )}
+        </div>
+      )}
+
+      {isGalleryKind && (
+        <div className="gallery-items-editor">
+          <span className="muted-note">{items.length} item{items.length === 1 ? "" : "s"}</span>
+          {items.map((item, idx) => (
+            <div key={item.id} className="gallery-item-editor">
+              <div className="gallery-item-head">
+                <span>{idx + 1}</span>
+                <input value={item.name ?? item.title ?? ""} onChange={(e) => onUpdateItem(item.id, { name: e.target.value, title: e.target.value })} placeholder="Item title / variant / state name" />
+                <button className="text-button small" onClick={() => onReorderItem(item.id, -1)}><Icon name="chevron" /></button>
+                <button className="text-button small" onClick={() => onReorderItem(item.id, 1)} style={{ transform: "rotate(180deg)" }}><Icon name="chevron" /></button>
+                <button className="danger-button small" onClick={() => onRemoveItem(item.id)}><Icon name="trash" /></button>
+              </div>
+              <textarea rows={2} value={item.description ?? ""} onChange={(e) => onUpdateItem(item.id, { description: e.target.value })} placeholder="Description" />
+              <input value={item.caption ?? ""} onChange={(e) => onUpdateItem(item.id, { caption: e.target.value })} placeholder="Caption" />
+              <input value={item.figmaUrl ?? ""} onChange={(e) => onUpdateItem(item.id, { figmaUrl: e.target.value })} placeholder="Figma URL" />
+              <input value={item.altText ?? ""} onChange={(e) => onUpdateItem(item.id, { altText: e.target.value })} placeholder="Alternative text" />
+              <AssetPickerButton assetId={item.assetId} assets={assets} onOpen={() => setPickAssetForItem(item.id)} label="Select visual" />
+              {item.assetId && <button className="text-button small" onClick={() => onUpdateItem(item.id, { assetId: undefined })}><Icon name="close" /> Remove visual</button>}
+
+              {pickAssetForItem === item.id && (
+                <AssetPicker
+                  assets={assets}
+                  onSelect={(asset) => { onUpdateItem(item.id, { assetId: asset.id }); setPickAssetForItem(null); }}
+                  onClose={() => setPickAssetForItem(null)}
+                  selectedId={item.assetId}
+                  title="Choose visual for item"
+                  allowClear
+                  onClear={() => { onUpdateItem(item.id, { assetId: undefined }); setPickAssetForItem(null); }}
+                />
+              )}
+            </div>
+          ))}
+          <button className="secondary-button small" onClick={onAddItem}><Icon name="plus" />Add item</button>
+        </div>
+      )}
+
+      {!isGalleryKind && !isTokenKind && !isSingleAssetKind && !isInteractiveKind && (
+        <p className="muted-note">Add label and caption for this block. Use gallery blocks for multiple visuals.</p>
+      )}
+
+      {pickAssetForBlock && (
+        <AssetPicker
+          assets={assets}
+          onSelect={(asset) => { onUpdate({ assetId: asset.id }); setPickAssetForBlock(false); }}
+          onClose={() => setPickAssetForBlock(false)}
+          selectedId={selectedAssetId}
+          title={`Choose visual for ${kindLabel}`}
+          allowClear
+          onClear={() => { onUpdate({ assetId: undefined }); setPickAssetForBlock(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PageProperties({ page, update, assets }: { page: ContentPage; update: (p: Partial<ContentPage>) => void; assets: Asset[] }) {
+  const coverAsset = assets.find((a) => a.id === page.coverAssetId);
   return (
     <div className="properties-form">
       <span className="eyebrow">Page</span>
@@ -462,18 +954,70 @@ function PageProperties({ page, update }: { page: ContentPage; update: (p: Parti
           <option value="foundation">Foundation</option>
           <option value="pattern">Pattern</option>
           <option value="resource">Resource</option>
+          <option value="design">Design</option>
         </select>
       </label>
       <label>Category<input value={page.category} onChange={(e) => update({ category: e.target.value })} /></label>
       <label>Owner<input value={page.owner} onChange={(e) => update({ owner: e.target.value })} /></label>
+      <label>Version<input value={page.version} onChange={(e) => update({ version: e.target.value })} /></label>
+      <label>Figma URL<input value={page.figmaUrl ?? ""} onChange={(e) => update({ figmaUrl: e.target.value || undefined })} placeholder="https://www.figma.com/file/..." /></label>
+      <label className="inline-check"><input type="checkbox" checked={Boolean(page.featured)} onChange={(e) => update({ featured: e.target.checked })} /> Featured on homepage</label>
+      <label>Cover visual
+        {coverAsset ? (
+          <span className="muted-note">Selected: {coverAsset.name} · {coverAsset.status}</span>
+        ) : <span className="muted-note">No cover selected — page will show neutral state</span>}
+      </label>
     </div>
   );
 }
 
-function addSection(page: ContentPage, setPage: (p: ContentPage) => void, setSelected: (id: string) => void) {
-  const id = `section-${crypto.randomUUID()}`;
-  setPage({ ...page, sections: [...page.sections, { id, kind: "rich-text", title: "New section", body: "Add guidance that is easy for designers to understand." }] });
-  setSelected(id);
+function PortalPreviewDrawer({ page, assets, tokenImports, onClose }: { page: ContentPage; assets: Asset[]; tokenImports: TokenImport[]; onClose: () => void }) {
+  const publishedTokens = getPublishedTokenImport(tokenImports);
+  const resolvedTokens = useMemo(() => getResolvedTokensFromImport(publishedTokens), [publishedTokens]);
+  return (
+    <div className="drawer-backdrop portal-preview-backdrop" onClick={onClose}>
+      <aside className="portal-preview-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Preview">
+        <header className="studio-header" style={{ marginBottom: 16 }}>
+          <div>
+            <span className="eyebrow">Preview — {page.status}</span>
+            <h2>{page.title}</h2>
+            <p className="muted-note">How this page will appear in the Portal. Drafts never appear in Portal — this preview uses admin assets.</p>
+          </div>
+          <button className="drawer-close" onClick={onClose} aria-label="Close preview"><Icon name="close" /></button>
+        </header>
+        <div className="portal-preview-content">
+          {page.coverAssetId && (
+            <div className="portal-preview-cover">
+              {(() => {
+                const cov = assets.find((a) => a.id === page.coverAssetId);
+                if (!cov?.fileUrl) return <div className="asset-unavailable small"><Icon name="image" /><span>Cover: no file yet</span></div>;
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cov.fileUrl} alt={cov.altText || cov.name} />
+                );
+              })()}
+            </div>
+          )}
+          {page.sections.map((section) => (
+            <section key={section.id} className="doc-section">
+              <h3>{section.title}</h3>
+              {section.body && <p>{section.body}</p>}
+              {section.items && (
+                <div className="guidance-grid">
+                  {section.items.map((item) => (
+                    <article key={item.title}><h4>{item.title}</h4><p>{item.description}</p></article>
+                  ))}
+                </div>
+              )}
+              {section.visualBlocks?.map((block) => (
+                <VisualBlockRender key={block.id} block={block} assets={assets} resolvedTokens={resolvedTokens} activeTokenImport={publishedTokens} />
+              ))}
+            </section>
+          ))}
+        </div>
+      </aside>
+    </div>
+  );
 }
 
 function makeNewPageTemplate(): ContentPage {
@@ -482,25 +1026,16 @@ function makeNewPageTemplate(): ContentPage {
     id,
     type: "component" as PageType,
     title: "Untitled component",
-    slug: `untitled-component-${id}`,
+    slug: `untitled-component-${id.slice(0, 8)}`,
     summary: "Describe the purpose and when to use this component.",
     category: "General",
     status: "draft" as const,
     maturity: "experimental" as const,
     version: "1.0",
     owner: "Design System Team",
-    updatedAt: "19 Jul 2026",
+    updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
     sections: [],
   };
-}
-
-function addRecommended(page: ContentPage, setPage: (p: ContentPage) => void, setSelected: (id: string) => void) {
-  const names = page.type === "component"
-    ? ["Overview", "Visual preview", "Anatomy", "Variants", "Sizes", "States", "Behavior", "Content guidelines", "Responsive behavior", "Accessibility", "Do & don’t", "Related components", "Figma resource", "Changelog"]
-    : ["Overview", "Principles", "Token collection", "Hierarchy", "Usage", "Examples", "Accessibility", "Do & don’t", "Related foundations", "Figma resource", "Changelog"];
-  const sections = names.map((n, i) => ({ id: `section-${i}`, kind: (i === 0 ? "overview" : "rich-text") as ContentSection["kind"], title: n, body: "Add clear guidance for designers." }));
-  setPage({ ...page, sections });
-  setSelected(sections[0].id);
 }
 
 async function duplicatePage(app: AppContext, p: ContentPage) {
@@ -525,43 +1060,171 @@ async function archivePage(app: AppContext, p: ContentPage) {
   }
 }
 
-function Tokens() {
-  const [library, setLibrary] = useState<TokenLibrary>(() => emptyTokenLibrary("token-dari-figma.json"));
-  const [loaded, setLoaded] = useState(false);
+// ─────────────────────────────────────────────────────────────
+// Tokens — Supabase-backed import flow
+// ─────────────────────────────────────────────────────────────
+
+function TokensManager({ app }: { app: AppContext }) {
+  const [selectedGroup, setSelectedGroup] = useState("All tokens");
+  const [query, setQuery] = useState("");
+  const [libraryPreview, setLibraryPreview] = useState<TokenLibrary | null>(null);
+  const [previewName, setPreviewName] = useState<string>("");
+  const [pendingImport, setPendingImport] = useState<TokenImport | null>(null);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importBroken, setImportBroken] = useState<string[]>([]);
+  const [importSummary, setImportSummary] = useState<TokenLibrary | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "published" | "archived">("all");
 
   useEffect(() => {
-    if (loaded) return;
+    if (libraryPreview) return;
     fetch("/token-dari-figma.json")
       .then((res) => res.json())
       .then((parsed) => {
-        setLibrary(parseTokenLibrary(parsed, "token-dari-figma.json"));
-        setLoaded(true);
+        try {
+          const lib = parseTokenLibrary(parsed, "token-dari-figma.json");
+          setLibraryPreview(lib);
+          setPreviewName("token-dari-figma.json");
+        } catch {
+          setLibraryPreview(emptyTokenLibrary("token-dari-figma.json"));
+        }
       })
       .catch(() => {
-        setLibrary(emptyTokenLibrary("token-dari-figma.json"));
-        setLoaded(true);
+        setLibraryPreview(emptyTokenLibrary("token-dari-figma.json"));
       });
-  }, [loaded]);
+  }, [libraryPreview]);
 
-  const [selectedGroup, setSelectedGroup] = useState("All tokens");
-  const [query, setQuery] = useState("");
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileImport = async (file: File) => {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
+      const structValid = validateTokenStructure(parsed);
+      if (!structValid.ok) {
+        setImportErrors(structValid.errors);
+        setImportBroken([]);
+        setImportSummary(null);
+        setPendingImport(null);
+        pushToast("warning", structValid.errors[0]);
+        return;
+      }
       const lib = parseTokenLibrary(parsed, file.name);
-      setLibrary(lib);
-      setSelectedGroup("All tokens");
-      pushToast("success", `Imported ${lib.total.toLocaleString()} tokens from ${file.name}`);
+      const aliasValid = validateTokenAliases(parsed);
+      setImportSummary(lib);
+      setImportErrors(aliasValid.errors);
+      setImportBroken(aliasValid.brokenAliases);
+      setPreviewName(file.name);
+      setLibraryPreview(lib);
+
+      const summary = {
+        fileName: file.name,
+        total: lib.total,
+        references: lib.references,
+        uniqueReferences: lib.uniqueReferences,
+        withDescription: lib.withDescription,
+        groups: lib.groups,
+      };
+      const newImport: TokenImport = {
+        id: crypto.randomUUID(),
+        fileName: file.name,
+        sourceJson: parsed,
+        summary,
+        status: "draft",
+        createdAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        publishedAt: null,
+        validationErrors: aliasValid.errors,
+        validationBrokenAliases: aliasValid.brokenAliases,
+      };
+      setPendingImport(newImport);
+      if (!aliasValid.ok) {
+        pushToast("warning", `${aliasValid.brokenAliases.length} broken alias${aliasValid.brokenAliases.length === 1 ? "" : "es"} found — fix in Figma before publishing.`);
+      } else {
+        pushToast("info", `Import ready — ${lib.total.toLocaleString()} tokens · ${lib.groups.length} groups`);
+      }
     } catch (error) {
+      setImportErrors([error instanceof Error ? error.message : "Could not parse token JSON"]);
       pushToast("error", error instanceof Error ? error.message : "Could not parse token JSON. Check the file format.");
     }
   };
 
-  const visibleGroups = library.groups
+  const saveDraft = async () => {
+    if (!pendingImport) return;
+    setSaving(true);
+    try {
+      const result = await app.upsertTokenImport(pendingImport);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't save this token import.");
+      pushToast("success", "Token import saved as draft.");
+      setPendingImport(null);
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't save this token import.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const publishImport = async (imp: TokenImport) => {
+    // Validate alias chain before allowing publish
+    const aliasValid = validateTokenAliases(imp.sourceJson);
+    if (!aliasValid.ok) {
+      pushToast("error", `Cannot publish — ${aliasValid.brokenAliases.length} broken alias${aliasValid.brokenAliases.length === 1 ? "" : "es"}. Fix in Figma first.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await app.upsertTokenImport({ ...imp, status: "published", publishedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't publish this token import.");
+      pushToast("success", "Token version published. Portal now uses this version.");
+      setPendingImport(null);
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't publish this token import.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unpublishImport = async (imp: TokenImport) => {
+    setSaving(true);
+    try {
+      const result = await app.upsertTokenImport({ ...imp, status: "draft", publishedAt: null });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't unpublish this token import.");
+      pushToast("success", "Token version moved to draft.");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't unpublish this token import.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const archiveImport = async (imp: TokenImport) => {
+    if (!confirm(`Archive token import ${imp.fileName}?`)) return;
+    setSaving(true);
+    try {
+      const result = await app.upsertTokenImport({ ...imp, status: "archived" });
+      if (!result.ok) throw new Error(result.error ?? "We couldn't archive this token import.");
+      pushToast("success", "Token import archived.");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't archive this token import.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteImport = async (imp: TokenImport) => {
+    if (!confirm(`Delete token import ${imp.fileName}? This removes the record permanently.`)) return;
+    setSaving(true);
+    try {
+      const result = await app.removeTokenImport(imp.id);
+      if (!result.ok) throw new Error(result.error ?? "We couldn't delete this token import.");
+      pushToast("success", "Token import deleted.");
+    } catch (error) {
+      pushToast("error", error instanceof Error ? error.message : "We couldn't delete this token import.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredImports = app.data.tokenImports.filter((t) => filterStatus === "all" || t.status === filterStatus);
+  const lib = libraryPreview ?? emptyTokenLibrary(previewName);
+  const visibleGroups = lib.groups
     .filter((g) => selectedGroup === "All tokens" || g.name === selectedGroup)
     .filter((g) => g.name.toLowerCase().includes(query.toLowerCase()));
 
@@ -571,22 +1234,95 @@ function Tokens() {
         eyebrow="Tokens"
         title="Token library"
         action={
-          <label className="primary-button upload-button">
+          <label className="primary-button">
             <Icon name="upload" />Import JSON
-            <input type="file" accept=".json" onChange={handleImport} hidden />
+            <input
+              type="file"
+              accept=".json"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFileImport(f);
+                e.currentTarget.value = "";
+              }}
+            />
           </label>
         }
       />
+
+      {pendingImport && (
+        <div className="token-import-review" role="region" aria-label="Import review">
+          <h3>Review import</h3>
+          <p className="muted-note">Original file is never edited inside CMS. Fix broken aliases in Figma and re-import.</p>
+          <dl>
+            <div><dt>File</dt><dd>{pendingImport.fileName}</dd></div>
+            <div><dt>Total tokens</dt><dd>{importSummary?.total.toLocaleString()}</dd></div>
+            <div><dt>Groups</dt><dd>{importSummary?.groups.length}</dd></div>
+            <div><dt>References</dt><dd>{importSummary?.references}</dd></div>
+            <div><dt>With description</dt><dd>{importSummary?.withDescription}</dd></div>
+          </dl>
+          {importBroken.length > 0 && (
+            <div className="form-error">
+              <strong>Broken aliases ({importBroken.length})</strong>
+              <ul>{importBroken.slice(0, 10).map((b) => <li key={b}>{b}</li>)}</ul>
+              {importErrors.length > 0 && <small>{importErrors[0]}</small>}
+            </div>
+          )}
+          {!importBroken.length && <p className="form-success" role="status">No broken aliases — ready to save as draft.</p>}
+          <div className="token-import-actions">
+            <button className="secondary-button" onClick={saveDraft} disabled={saving}>Save as draft in Supabase</button>
+            <button className="primary-button" onClick={() => saving || pendingImport && publishImport(pendingImport)} disabled={saving || importBroken.length > 0}>Save and publish</button>
+            <button className="text-button" onClick={() => { setPendingImport(null); setImportErrors([]); setImportBroken([]); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       <section className="token-summary">
-        <article><span>Active source</span><h2>{library.fileName}</h2><p>Figma Design Tokens format</p><em className="status published">Published</em></article>
-        <article><span>Total tokens</span><strong>{library.total.toLocaleString()}</strong><p>Across {library.groups.length} collections</p></article>
-        <article><span>References</span><strong>{library.references.toLocaleString()}</strong><p>{library.uniqueReferences} unique references</p></article>
-        <article><span>Descriptions</span><strong>{library.withDescription.toLocaleString()}</strong><p>{(library.total - library.withDescription).toLocaleString()} still need guidance</p></article>
+        <article><span>Active source</span><h2>{lib.fileName || previewName || "No file"}</h2><p>Figma Design Tokens format</p><em className="status published">Preview</em></article>
+        <article><span>Total tokens</span><strong>{lib.total.toLocaleString()}</strong><p>Across {lib.groups.length} collections</p></article>
+        <article><span>References</span><strong>{lib.references.toLocaleString()}</strong><p>{lib.uniqueReferences} unique references</p></article>
+        <article><span>Descriptions</span><strong>{lib.withDescription.toLocaleString()}</strong><p>{(lib.total - lib.withDescription).toLocaleString()} still need guidance</p></article>
       </section>
+
+      <div className="token-filter-bar">
+        <span>Status:</span>
+        {(["all", "draft", "published", "archived"] as const).map((s) => (
+          <button key={s} className={filterStatus === s ? "active" : ""} onClick={() => setFilterStatus(s)}>{s}</button>
+        ))}
+        <span style={{ marginLeft: 12 }}>{filteredImports.length} import{filteredImports.length === 1 ? "" : "s"}</span>
+      </div>
+
+      {filteredImports.length > 0 && (
+        <div className="token-imports-table-wrap">
+          <table className="token-imports-table">
+            <thead><tr><th>File</th><th>Total</th><th>Status</th><th>Published</th><th>Broken aliases</th><th>Actions</th></tr></thead>
+            <tbody>
+              {filteredImports.map((imp) => (
+                <tr key={imp.id}>
+                  <td>{imp.fileName}</td>
+                  <td>{imp.summary.total}</td>
+                  <td><em className={`status ${imp.status}`}>{imp.status}</em></td>
+                  <td>{imp.publishedAt ?? "—"}</td>
+                  <td>{imp.validationBrokenAliases.length ? <span className="form-error">{imp.validationBrokenAliases.length} broken</span> : <span className="form-success">OK</span>}</td>
+                  <td>
+                    <div className="token-row-actions">
+                      {imp.status === "draft" && <button className="primary-button small" onClick={() => publishImport(imp)} disabled={saving || imp.validationBrokenAliases.length > 0}>Publish</button>}
+                      {imp.status === "published" && <button className="secondary-button small" onClick={() => unpublishImport(imp)} disabled={saving}>Unpublish</button>}
+                      <button className="secondary-button small" onClick={() => archiveImport(imp)} disabled={saving}>Archive</button>
+                      <button className="danger-button small" onClick={() => deleteImport(imp)} disabled={saving}><Icon name="trash" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="token-workspace">
         <aside>
-           <button className={selectedGroup === "All tokens" ? "active" : ""} onClick={() => setSelectedGroup("All tokens")}>All tokens <span>{library.total.toLocaleString()}</span></button>
-           {library.groups.slice(0, 8).map((g) => (
+           <button className={selectedGroup === "All tokens" ? "active" : ""} onClick={() => setSelectedGroup("All tokens")}>All tokens <span>{lib.total.toLocaleString()}</span></button>
+           {lib.groups.slice(0, 8).map((g) => (
              <button key={g.name} className={selectedGroup === g.name ? "active" : ""} onClick={() => setSelectedGroup(g.name)}>{g.name}<Icon name="chevron" /></button>
            ))}
         </aside>
@@ -710,15 +1446,18 @@ function Feedback() {
 
 function Settings({ app }: { app: AppContext }) {
   const [settings, setSettings] = useState(app.data.settings);
-  const [portalConfig, setPortalConfig] = useState(formatPortalConfig(app.data.settings.portal));
+  const [portalConfig, setPortalConfig] = useState(() => {
+    if (app.data.settings.portal) return app.data.settings.portal;
+    // seed from empty config
+    return getDefaultPortalConfig();
+  });
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState("General");
+
   const save = async () => {
     setSaving(true);
     try {
-      const portal = portalConfig.trim() ? parsePortalConfig(portalConfig) : undefined;
-      if (portalConfig.trim() && !portal) throw new Error("Portal configuration must be valid JSON with navigation, footer, home, collections, and copy.");
-      const result = await app.setSettings({ ...settings, portal, seo: { title: settings.seo?.title ?? "", description: settings.seo?.description ?? "" } });
+      const result = await app.setSettings({ ...settings, portal: portalConfig, seo: { title: settings.seo?.title ?? "", description: settings.seo?.description ?? "" } });
       if (!result.ok) throw new Error(result.error ?? "We couldn't save settings.");
       pushToast("success", "Settings saved.");
     } catch (error) {
@@ -727,6 +1466,7 @@ function Settings({ app }: { app: AppContext }) {
       setSaving(false);
     }
   };
+
   return (
     <div className="studio-page settings-page">
       <StudioHeader eyebrow="Settings" title="Portal settings" />
@@ -747,18 +1487,26 @@ function Settings({ app }: { app: AppContext }) {
                 <label>Description<textarea rows={5} value={settings.description} onChange={(e) => setSettings({ ...settings, description: e.target.value })} /></label>
                 <label>SEO title<input value={settings.seo?.title ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: e.target.value, description: settings.seo?.description ?? "" } })} /></label>
                 <label>SEO description<textarea rows={3} value={settings.seo?.description ?? ""} onChange={(e) => setSettings({ ...settings, seo: { title: settings.seo?.title ?? "", description: e.target.value } })} /></label>
-                <label>Portal content configuration<textarea rows={18} value={portalConfig} onChange={(e) => setPortalConfig(e.target.value)} placeholder="Paste the JSON configuration for navigation, landing content, collections, resources, footer, and public copy." /></label>
                 <label>Portal visibility
                   <select value={settings.visibility} onChange={(e) => setSettings({ ...settings, visibility: e.target.value as "public" | "unlisted" })}>
                     <option value="unlisted">Unlisted — no login, no search indexing</option>
                     <option value="public">Public</option>
                   </select>
                 </label>
-                <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save changes"}</button>
+                <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save general settings"}</button>
               </div>
             </>
           )}
-          {activeSection !== "General" && (
+          {activeSection === "Branding" && (
+            <div className="portal-config-tab-wrapper">
+              <p className="muted-note">Configure navigation, homepage, collections, resource cards, footer, and public messages using the structured form. The JSON details view is for administrators only.</p>
+              <PortalConfigEditor config={portalConfig} assets={app.data.assets} onChange={(next) => setPortalConfig(next)} />
+              <div style={{ marginTop: 24 }}>
+                <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save portal configuration"}</button>
+              </div>
+            </div>
+          )}
+          {activeSection !== "General" && activeSection !== "Branding" && (
             <p className="muted-note">{activeSection} configuration will be available in a future update.</p>
           )}
         </section>

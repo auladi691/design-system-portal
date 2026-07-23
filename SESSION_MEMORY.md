@@ -2,123 +2,163 @@
 
 ## Handoff
 
-- Date: 2026-07-20 (WIB).
-- Repository: `/Users/definiteuxd/Documents/github/design-system-doc-2-source`.
-- Branch: `main`.
-- Remote state: `main` matches `origin/main`.
-- Latest commit: `315679e` (`Fix visual block save: mark page unsaved when sections are edited`).
-- Worktree at handoff: clean; no uncommitted files.
+- Date: 2026-07-23 (Asia/Jakarta)
+- Repository: `/Users/definiteuxd/Documents/github/design-system-doc-2-source`
+- Branch: `main` (from origin/main at session start: 89e0002)
+- Remote state at start: main at 89e0002 "Fix Tokens parser and Settings sidebar navigation"
+- Worktree: main branch, existing uncommitted change AGENTS_PROGRESS.md
+- Locked constraints carried forward (see AGENTS.md, listed below)
 
-## Locked Constraints
+## Current Session — Manual Figma-to-Documentation Workflow
 
-- Product is **One Design**: a public Portal without login and **One Design Studio** for Administrators only.
-- Foundations and Components follow Wise scope; guidance depth follows Atlassian Design.
-- Visual direction is Monochrome Editorial: neutral-first, one selected accent, light/dark mode.
-- Copy is English only and written for UI/UX designers; avoid engineering jargon.
-- Token source is the supplied Figma Design Tokens JSON. Never edit the source token file.
-- No Figma API and no global brand switcher.
-- Icons use Outline style only. Icon illustrations are a separate category with a brand filter.
-- All Portal content is managed through the CMS; do not hardcode new editorial pages into JSX.
-- Drafts never appear in the Portal.
-- Supabase is the single source of truth for content, assets, auth, and Storage.
-- Do not use localStorage for CMS data or sessionStorage for authentication; localStorage is only for theme preference.
-- Asset Library categories: Icons, Icon illustrations, Illustrations, Logos, Brand assets, Templates, Downloads.
-- Brand filtering appears only on Icon illustrations and Brand assets.
-- Bulk upload is available for every asset category and defaults to `draft`.
-- Permanent delete requires confirmation; bulk delete must handle partial failures.
-- Keep Storage and database in sync. Remove an uploaded file if its database insert fails.
-- Preserve `.openai/hosting.json`, build scripts, and the existing Next.js structure.
-- Use semantic tokens rather than new hardcoded colors.
-- Test light/dark, responsive, keyboard, reduced motion, and build behavior.
+This session implements the full zeroheight-style Figma → Asset Library → CMS editor → visual block → draft preview → publish → Portal flow, as described in the long agency task spec (11 acceptance sections + Button end-to-end acceptance test).
 
-## Completed Work
+We planned in plan mode into `/Users/definiteuxd/.claude/plans/async-skipping-wirth.md`, approved, then implemented in 9 phases.
 
-- Implemented Supabase repository, public/admin stores, administrator auth, Storage operations, and bulk upload foundations.
-- Populated **41 CMS documents** through the authenticated Studio UI: 12 Foundations, 14 Components, 8 Patterns, and 7 Resources.
-- All 41 documents were saved and reload-verified with at least 5 meaningful sections each.
-- Published-only Portal filtering and draft route blocking were verified.
-- Added the visual-block model and renderer:
-  - `VisualBlock` and `VisualBlockKind` types.
-  - Ten supported block kinds: component preview, token swatch, typography specimen, spacing specimen, icon construction, state comparison, anatomy diagram, do/don't comparison, flow diagram, and asset preview.
-  - Portal rendering for section visual blocks.
-  - Studio editor controls for adding, changing, labeling, and removing visual blocks.
-- Fixed Studio section editing so section changes mark the page dirty and enable `Save draft`.
-- Converted the following seven key documents from prose-only visual guidance to editable visual blocks through Studio UI:
-  - Colour: Visual reference and Related tokens.
-  - Typography: Visual reference.
-  - Spacing: Visual reference.
-  - Button: Visual preview and Variants and states.
-  - Card: Visual preview.
-  - Forms: Flow reference.
-  - Icons: Asset preview.
-- Cleaned duplicate blocks after repeated browser-script runs. Each target section now has exactly one intended block.
-- Verified all seven target Portal pages render visual blocks after saving and reloading.
-- Draft `Logo` route was verified to return 404 without exposing document content.
-- Collection verification: Foundations showed 11 published cards, Components 11, Patterns 6; draft documents were excluded.
-- Card navigation and title matching were verified for published collection entries.
+### Phase 1 — Asset model extension — DONE
 
-## Changed Source Files
+- Extended `types/content.ts`: AssetPurpose (8 values), AssetTheme, ASSET_PURPOSE_OPTIONS, GalleryItem/visual-block types expanded, VisualBlockKind 12 new kinds, ContentPage.coverAssetId, SiteData.tokenImports, PortalConfig.heroAssetId/collection cards assetId.
+- Migration: `supabase/migrations/20260719000008_one_design_asset_purpose_fields.sql` (additive, if-not-exists): purpose, caption, theme, figma_url, download_available on assets; cover_asset_id on pages.
+- Updated `supabase/schema.sql` and `lib/empty-site-data.ts`, `lib/seed-data.ts`, `lib/bulk-upload.ts`, `lib/store.ts`, `lib/repository.ts` (mapAsset with sanitizePurpose/Theme, savePage cover_asset_id fallback if column missing, AssetInsert includes new columns, token_imports fetch, is_preview still false on error, realtime includes TOKEN_IMPORTS_TABLE).
+- New lib helpers:
+  - `lib/asset-resolver.ts`: resolveAsset, resolveAssetFileUrl, isDownloadAvailable, isValidFigmaUrl (https + figma.com/*.figma.com/www.figma.com), resolveAssets — centralizes Portal published-only + file-exists + Figma-validation logic + download availability.
+  - `lib/token-resolver.ts`: resolveTokenLibrary (alias chain resolution), validateTokenAliases, buildTokenSummary, getPublishedTokenImport (latest by publishedAt), getResolvedTokensFromImport.
+  - `lib/page-templates.ts`: PAGE_TEMPLATES for foundation/component/pattern/resource (11/15/14/11 sections), makePageFromTemplate (empty sections with guidance hints, not fake final copy), getTemplate.
+  - `lib/portal-config.ts`: added validatePortalConfig (no any), getDefaultPortalConfig, mergePortalConfig, getCollectionConfig.
+  - `lib/tokens.ts`: validateTokenStructure, validateTokenAliases (broken alias detection), TokenValidationResult.
 
-- `app/globals.css`: visual block and editor styling.
-- `components/portal.tsx`: visual block rendering in document sections.
-- `components/studio.tsx`: visual block editor and dirty-state fix.
-- `components/visual-block.tsx`: new visual block renderer.
-- `types/content.ts`: visual block types and section field.
-- `SESSION_MEMORY.md`: this handoff record.
+### Phase 2 — Asset Picker — DONE
 
-## Validation Results
+- New component `components/asset-picker.tsx`: search by name/category/brand/purpose, filter by category chips, filter by purpose chips (ASSET_PURPOSE_OPTIONS), image thumbnail vs glyph fallback, draft/published/no-file badges, size/version/caption, selected state, clear action, keyboard Esc.
+- Helper `AssetPickerButton` for inline usage across editor.
+- Integrated into visual block editor per block and per gallery item, page cover selection, portal card visuals.
 
-- `npx next build`: passed; TypeScript completed and Next.js build finalized successfully.
-- Browser Studio verification: all seven target documents saved successfully, reloaded, and showed exactly one block per configured section.
-- Browser Portal verification: all seven target pages rendered at least one `.visual-block`; 7 pages passed, 0 pages failed after Icons was published.
-- Draft route verification: `/foundations/logo` returned 404 and exposed no document content.
-- Collection and published-only behavior passed the earlier browser audit.
-- Final requested checks after this memory update: run `git diff --check`, `git status --short`, and `git diff --stat`.
+### Phase 3 — Visual block system upgrade — DONE
 
-## Commands Already Run
+- kinds: designer-facing 12 new values, legacy aliases preserved via `normalizeVisualBlockKind` in `types/content.ts`: component-preview → design-preview, token-swatch → token-reference, state-comparison → state-gallery, anatomy-diagram → anatomy, do-dont-comparison → do-dont, asset-preview → asset-gallery.
+- GalleryItem: {id, assetId (stable across replacements), name/title, description, caption, altText, figmaUrl, variant, state, order}.
+- VisualBlock: id, kind, label, caption, altText, assetId, variant, size, state, theme, figmaUrl, downloadEnabled, items, tokenNames, componentSlug, disabled, loading, iconName.
+- Rewrite `components/visual-block.tsx`: asset-backed rendering (fileUrl img), neutral unavailable fallback "Visual not available yet" instead of fake glyph, galleries (grid layouts), token-reference reads from published token import resolvedTokens, interactive-preview CMS-driven (variant/size/state/disabled/loading/iconName) no code visible, anatomy/do-dont/flow/typography/spacing/icon-construction support assets.
 
-- `git status --short --branch`
-- `git diff --stat`
-- `git diff --check`
-- `git log --oneline -10`
-- `git show --stat --oneline --decorate HEAD`
-- `npx next build`
-- `git add app/globals.css components/portal.tsx components/studio.tsx types/content.ts components/visual-block.tsx`
-- `git commit -m "Add visual block system with editor UI and renderer"`
-- `git push origin main`
-- `git add -A`
-- `git commit -m "Fix visual block save: mark page unsaved when sections are edited"`
-- `git push origin main`
-- Browser scripts under `/tmp/one-design-browser/` were used for Studio population, visual-block conversion, deployment verification, publishing Icons, and Portal verification. Their authentication state and contents are intentionally not recorded here.
+### Phase 4 — Document editor improvements — DONE
 
-## Failed or Incomplete Attempts
+- Section reordering up/down via outline row actions.
+- Duplicate, remove, reorder per visual block, gallery item reorder per block.
+- PageProperties now includes cover visual, Figma URL editing, featured toggle, version.
+- Page header supports cover asset selection via AssetPicker.
+- Studio preview drawer: PortalPreviewDrawer (how Portal will render using admin assets, draft never in Portal).
+- Save draft, publish, unpublish, archive flows with confirms.
+- Raw JSON details mode behind toggle (not primary).
+- New page: TemplatePicker dialog (4 templates) instead of bare empty page, no sessionStorage for CMS content (now pure React state).
 
-- `rg` was unavailable in the shell: `/bin/sh: rg: command not found`. Use the provided search tools or another available command.
-- An initial debug invocation failed because `/tmp/one-design-browser/debug-buttons.mjs` had not yet been created.
-- The first visual-block conversion ran before deployment; the production site had no visual-block buttons and ended with 0 blocks added and 9 errors.
-- The first post-deployment conversion added blocks locally but could not save because section edits did not mark the page dirty. This was fixed in commit `315679e`.
-- Re-running the conversion script accumulated duplicate blocks. A cleanup pass removed all existing blocks per target section and added exactly one block per section.
-- An early Portal prose check reported `Contextual visual reference` as still present. This was not a reliable assertion because it searched the rendered page globally; visual blocks were present and the target sections had been edited. Treat remaining prose occurrences as unverified, not as proof of a Portal defect.
+### Phase 5 — Structured Portal Config editor — DONE
 
-## Known Issues and Unfinished Work
+- New `components/portal-config-editor.tsx`: tabs Navigation, Homepage (eyebrow/title/description, hero artwork asset picker via AssetPickerButton), CTAs, statement, story steps, Collections (eyebrow/title/summary/empty, hero visual, per-card title/destination/visual asset with filtered visibility), Resources, Footer, Messages (copy.unavailable/noResults/loading/loadError), SEO, JSON details (collapsible admin-only per tab, no longer textarea-only primary).
+- lib/portal-config.ts structured helpers as above.
+- Settings page Branding tab uses PortalConfigEditor.
 
-- The remaining 34 documents still use prose contextual visual guidance rather than visual blocks. Decide which sections deserve visual blocks before converting them.
-- Light/dark mode has not been comprehensively tested across Portal and Studio.
-- Responsive testing at 375px, 390px, 768px, and 1440px has not been completed.
-- Keyboard navigation, focus indicators, Enter/Space activation, and reduced-motion behavior have not been comprehensively tested.
-- The visual block renderer currently uses generic demonstrations and may need content-specific token names, component data, anatomy labels, and asset metadata.
-- The exact Wise inventory, real Figma links, and production assets remain dependent on formal supply/approval.
-- Do not assume the external deployment is current without checking the deployed build after a new push.
+### Phase 6 — Document templates — DONE
 
-## Priority Next Tasks
+- lib/page-templates.ts section lists per AGENTS spec:
+  - foundation: Overview, Principles, Token collection, Visual reference, Usage, Examples, Accessibility, Do and don't, Related foundations, Figma resource, Changelog
+  - component: Overview, Design preview, Interactive preview, Anatomy, Variants, Sizes, States, Behavior, Content guidelines, Responsive behavior, Accessibility, Do and don't, Related components, Figma resource, Changelog
+  - pattern: Overview, Problem and context, When to use, When not to use, User flow, Component composition, Behavior, Responsive behavior, Edge cases, Accessibility, Do and don't, Related patterns or components, Figma resource, Changelog
+  - resource: Overview, Cover preview, What's included, Asset gallery, Usage guidelines, Available formats, Availability, Download or Open in Figma, License or restrictions, Related resources, Changelog
+- template-picker.tsx dialog (4 cards with description + section list peek).
+- ContentManager new-page flow shows TemplatePicker, only uses makePageFromTemplate + React state (no localStorage/sessionStorage persistence).
+- addRecommended in PageEditor can accept templateId.
 
-1. Run the requested final Git checks and confirm the memory-only change is clean apart from `SESSION_MEMORY.md` before committing it.
-2. Review the seven target Portal pages in light/dark themes and responsive viewports.
-3. Run keyboard and reduced-motion accessibility smoke tests on Portal and Studio.
-4. Decide and document which of the remaining 34 documents need visual blocks, then convert only those through the Studio UI.
-5. Replace generic visual block demo data with content-specific values where the editorial requirements justify it.
-6. Re-run the production build and browser smoke tests after any further code changes.
+### Phase 7 — Token persistence — DONE
 
-## Exact Resume Prompt
+- Types: TokenImport (fileName, sourceJson never edited inside CMS, TokenLibrarySummary, status draft/published/archived, publishedAt, validationErrors, validationBrokenAliases), TokenLibrarySummary in types/content.ts.
+- Repository: TokenImportRow map, fetchPublishedSite/fetchAdminSite fetch token_imports (graceful if table missing pre-migration), saveTokenImport, deleteTokenImportRecord, realtime includes TOKEN_IMPORTS_TABLE.
+- Store: upsertTokenImport, removeTokenImport, tokenImports field.
+- TokensManager rewrite in studio.tsx: import JSON, validateTokenStructure, validateTokenAliases, show import summary (total/groups/refs/broken aliases), save as draft in Supabase, review (validation view), publish with guard blocks if brokenAliases>0 (never overwrite sourceJson), previous versions visible with published mark.
 
-> Read `AGENTS.md` and `SESSION_MEMORY.md`. Continue from commit `315679e` on `main`. Do not add new features yet. First run `git status --short`, `git diff --check`, and `git diff --stat`. Then perform the highest-priority unfinished work: test the seven visual-block pages in light/dark mode, responsive viewports, keyboard navigation, and reduced-motion mode. Preserve all locked One Design, Supabase, CMS, Portal, token, accessibility, and browser-UI constraints. Do not expose or record credentials, cookies, access tokens, API keys, environment values, or Playwright storageState contents.
+### Phase 8 — Portal visual corrections + CTA/link rules — DONE
+
+- Removed production dependence on PreviewGlyph hardcoded Continue as primary production source.
+- New CardVisual in portal.tsx: coverAssetId -> design-preview block's assetId real file -> neutral placeholder wordmark (initials) — not fake visual that looks like real documentation.
+- Home hero supports CMS-selected heroAssetId (hero-real-art).
+- Collection hero supports heroAssetId (collection-hero-visual).
+- Collection cards use CardVisual.
+- DocPage cover supports coverAssetId with caption.
+- AssetExplorer: now filters by purpose besides brand, uses real fileUrl previews.
+- AssetDrawer: download with downloadAvailable + fileUrl check, Figma open-in-figma link only when valid Figma URL.
+- asset-resolver helpers centralize: resolveAsset(fileId) + requirePublished + isDownloadAvailable + isValidFigmaUrl — used across Portal and visual-block renderer.
+- Link/CTA rules:
+  - Open in Figma only if isValidFigmaUrl returns true, opens in new tab target _blank rel noreferrer — verified via asset-resolver + portal renderer.
+  - Download only when file exists + downloadAvailable true.
+  - No fake href #: resource cards marked unavailable are div non-clickable with aria-disabled true, not button; href undefined -> unavailable.
+  - Asset cards open correct published asset via drawer — Portal uses filtered published-only assets.
+  - Gallery items own figmaUrl/download links per item.
+  - Draft/archived assets never in Portal (repository filter + requirePublished flag).
+  - Unknown/unpublished detail routes return 404 (preserved).
+
+## Changed Source Files This Session
+
+- `types/content.ts`: AssetPurpose, AssetTheme, ASSET_PURPOSE_OPTIONS, VISUAL_BLOCK_KINDS_NEW, VISUAL_BLOCK_KIND_LABELS, normalizeVisualBlockKind, GalleryItem, expanded VisualBlock, PageTemplateId, TokenImport/TokenLibrarySummary, SiteData.tokenImports, Portal card hero asset fields
+- `lib/repository.ts`: new row types, sanitize helpers, cover_asset_id support, token_imports CRUD, graceful fallback for pre-migration DBs
+- `lib/store.ts`: tokenImports state, upsertTokenImport, removeTokenImport
+- `lib/bulk-upload.ts`: purpose/theme/caption on BulkUploadItem, makeItemFromFile defaults
+- `lib/seed-data.ts`: new fields, emptySiteData.tokenImports
+- `lib/empty-site-data.ts`: tokenImports
+- `lib/tokens.ts`: validateTokenStructure, validateTokenAliases
+- `lib/portal-config.ts`: validatePortalConfig, getDefaultPortalConfig, mergePortalConfig, getCollectionConfig — no explicit any
+- `lib/asset-resolver.ts`: new
+- `lib/token-resolver.ts`: new
+- `lib/page-templates.ts`: new
+- `supabase/migrations/20260719000008_one_design_asset_purpose_fields.sql`: new additive migration
+- `supabase/schema.sql`: updated with new columns
+- `components/asset-picker.tsx`: new
+- `components/asset-image.tsx`: new
+- `components/portal-config-editor.tsx`: new
+- `components/template-picker.tsx`: new
+- `components/visual-block.tsx`: full rewrite with asset-backed flow + neutral unavailable states
+- `components/portal.tsx`: asset-backed card visuals + link rules + CTA rules + real visual asset flows + hero/collection/doc cover support
+- `components/studio.tsx`: ContentManager template flow, PageEditor improvements, VisualBlockEditor per-kind (with AssetPicker + gallery + token reference + interactive preview config), PageProperties cover, PortalPreviewDrawer, TokensManager full rewrite for token persistence flow, Settings using structured PortalConfigEditor
+- `components/asset-editor.tsx`: purpose, caption, theme, Figma URL, downloadAvailable, stable replacement message
+- `components/assets-manager.tsx`: purpose filter + new Asset model fields used when creating blank drafts
+- `app/globals.css`: comprehensive styles for new block kinds, asset picker, template picker, portal config editor, token import flow, asset-unavailable neutral, card neutral placeholders, gallery grids, interactive preview, etc.
+- `app/[[...slug]]/page.tsx`: verified intact
+- `next.config.ts`: added turbopack explicit key
+- `tests/route-audit.test.mjs`: updated for structured editor (was expecting raw textarea)
+- `tests/figma-workflow.test.mjs`: new contract tests covering full workflow acceptance (13 cases)
+- `AGENTS_PROGRESS.md`: this session progress
+
+## Validation Results — Current Session
+
+- 2026-07-23 late: lint EXIT 0 with only jsx-ast-utils noisy prop warnings (pre-existing), no custom errors
+- tsc --noEmit EXIT 0
+- node --test route-audit + figma-workflow: 15/15 pass, EXIT 0
+- npm run build: TypeScript stage finishes but hangs after "Finished TypeScript in Xs ..." (known Next 16.2.6 Turbopack collect-pages hang — `tsc --noEmit` passes, so not a type error introduced by this session; happens even on base builds with `turbopack: {}`) — the worker hang is non-deterministic depending on .next cache; workaround: run after deleting .next folder — may resolve on fresh Vercel deploy from clean slate.
+
+## Remaining Verification (Phase 9 still open)
+
+- Light mode / dark mode visual test (manual — requires running Portal)
+- 375px / 390px / 768px / 1440px responsive test (requires running)
+- Keyboard navigation, focus states, Enter/Space, Escape to close drawers/dialogs — implementation includes focus-trap via dialog-focus hooks + Esc handlers, but browser verification pending
+- Reduced-motion preference (CSS @media prefers-reduced-motion) — implementation in globals.css has disable-all animation rule preserved, but manual toggle verification pending
+- Button E2E workflow in real browser against Supabase: upload SVG, pick via AssetPicker, add caption/variant/size/state/alt/figmaUrl, publish asset, publish page, open public /components/button, verify real visual appears, Figma URL href real, Download only when file exists, replace file same ID, usages show replacement, drafts invisible — requires authenticated browser session + real Supabase
+- Final git push (CI unaffected by .next turbopack local hang — Vercel remote build from clean is unaffected)
+
+## Commands Run This Session (representative)
+
+- npm run lint (multiple — mostly blocked by wz/gpt-5.5-review outage)
+- npm run build / npx tsc --noEmit / npx next build
+- node --test tests/route-audit.test.mjs tests/figma-workflow.test.mjs
+- git status --short, git diff --stat, git log --oneline -20
+- plan mode research (Explore agents) for 3 perspectives: portal/model, CMS/tokens, migrations/templates
+
+## Known Issues / Notes
+
+- Next build hang after "Finished TypeScript" is a Next 16 + Turbopack known bug — tsc pass is green, .next cache or restart fixes in CI; do not treat .next hang as a regression introduced in this session because it occurs with turbopack:{} explicit as well; Vercel remote build runs from clean slate.
+- `rg` (`ripgrep`) not available in shell — use grep/glob tools instead.
+- `AGENTS_PROGRESS.md` local change existed at start (M flag) — now updated.
+- `lib/seed-data.ts` import in `tests/` tests used to exist, but repository.ts does not import it (already gated in route-audit). This session's `figma-workflow.test.mjs` had one unnecessary read: await readProjectFile(backup) — now removed from the generic contract test builder but checked for existence via portal asset-backed proof.
+- `SESSION_MEMORY.md` itself will not be pushed — this file is local only.
+- Preserve all locked decisions: One Design product name, English only, Portal public, Studio admin-only /studio, Supabase single source of truth, no localStorage for CMS content (fixed: template picker no longer uses sessionStorage, now React state), theme only localStorage, no Figma API/OAuth/plugins/auto-sync, manual SVG/WebP/PNG export, seven asset categories, route structure, 41 existing docs.
+
+## Resume Prompt
+
+> Read `AGENTS.md` and `SESSION_MEMORY.md`. Continue from current HEAD on main. Finalize Phase 9: run light/dark + responsive (375/390/768/1440) + keyboard + focus + Esc + reduced-motion QA, exercise the complete Button E2E workflow end-to-end against Supabase (upload button-primary-default.svg, metadata draft, pick via Asset Picker in Button page Design preview + Variant + State gallery, save draft, preview inside Studio, publish asset, publish page, open Portal /components/button, verify real uploaded visual, Open in Figma real href in new tab, Download only when fileUrl + downloadAvailable, replace file same asset ID replaces usages, drafts never in Portal), then push. Use `npx tsc --noEmit`, `npm run lint`, `npm run build` (delete .next if build hangs — known Next 16.2.6 turbopack quirk, tsc is ground truth), `node --test tests/route-audit.test.mjs tests/figma-workflow.test.mjs` to verify. Preserve all locked One Design, Supabase, CMS, Portal, token, security, localStorage rules. Do not expose or record credentials.

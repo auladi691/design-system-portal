@@ -12,10 +12,13 @@ export type BulkUploadItem = {
   slug: string;
   category: string;
   brand: Asset["brand"];
+  purpose: Asset["purpose"];
+  theme: Asset["theme"];
   description: string;
   keywords: string[];
   version: string;
   altText: string;
+  caption: string;
   status: Asset["status"];
   progress: number;
   error: string | null;
@@ -55,11 +58,13 @@ async function runWorker(
       onItemChange(item.id, { progress: 85 });
       const asset: Asset = {
         id: item.id,
-         type: item.type,
+        type: item.type,
         name: item.name,
         slug: item.slug,
         category: item.category,
         brand: item.brand,
+        purpose: item.purpose,
+        theme: item.theme,
         status: publishAfterUpload ? "published" : "draft",
         description: item.description,
         keywords: item.keywords,
@@ -67,6 +72,9 @@ async function runWorker(
         version: item.version,
         updatedAt: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
         altText: item.altText,
+        caption: item.caption,
+        figmaUrl: undefined,
+        downloadAvailable: true,
         filePath: stored.path,
         fileUrl: stored.url,
         mimeType: stored.mimeType,
@@ -109,10 +117,13 @@ export function makeItemFromFile(file: File, type: AssetType, existingSlugs: str
     slug,
     category: config ? defaultCategory(type) : "General",
     brand: "Shared",
+    purpose: "general-asset",
+    theme: "both",
     description: "",
     keywords: [],
     version: "1.0",
     altText: "",
+    caption: "",
     status: "draft",
     progress: 0,
     error: null,

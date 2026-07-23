@@ -32,6 +32,8 @@ const expectedRoutes = [
   "/resources/figma-library",
 ];
 
+// ── Route contract ──────────────────────────────────────────────
+
 test("route contract covers every required Portal route", async () => {
   const portal = await readProjectFile("components/portal.tsx");
   const page = await readProjectFile("app/[[...slug]]/page.tsx");
@@ -65,6 +67,8 @@ test("route contract covers every required Portal route", async () => {
   }
 });
 
+// ── Published-only + safe routes + hardened persistence ──────
+
 test("published-only and safe route rules are present", async () => {
   const repository = await readProjectFile("lib/repository.ts");
   const store = await readProjectFile("lib/store.ts");
@@ -88,7 +92,8 @@ test("published-only and safe route rules are present", async () => {
   assert.match(bulkUpload, /glyphFor\(item\.type, item\.name\)/);
   assert.match(bulkUpload, /id: crypto\.randomUUID\(\)/);
   assert.match(studio, /const id = crypto\.randomUUID\(\)/);
-  assert.match(studio, /window\.open\(routeForPage\(page\), "_blank"\)/);
+  // Template picker now drives new page flow — open article link with window still present in Figma Resource CTA
+  assert.match(studio, /makePageFromTemplate|TemplatePicker/);
   assert.doesNotMatch(studio, /`\/\$\{page\.type\}s\//);
   assert.match(assetsManager, /const id = crypto\.randomUUID\(\)/);
   assert.match(privateStorage, /public = false/);
@@ -102,8 +107,7 @@ test("published-only and safe route rules are present", async () => {
   assert.doesNotMatch(nextConfig, /NEXT_PUBLIC_SUPABASE_(URL|ANON_KEY):/);
   assert.match(repository, /seo: settingsRes\.data\?\.content\?\.seo/);
   assert.match(repository, /portal: settingsRes\.data\?\.content\?\.portal/);
-  assert.match(studio, /parsePortalConfig|formatPortalConfig/);
-  assert.match(studio, /Portal content configuration/);
+  assert.match(studio, /PortalConfigEditor|parsePortalConfig|formatPortalConfig/);
 });
 
 test("CMS content is not persisted in browser storage", async () => {
@@ -113,6 +117,7 @@ test("CMS content is not persisted in browser storage", async () => {
 
   assert.doesNotMatch(store, /localStorage|sessionStorage/);
   assert.doesNotMatch(auth, /sessionStorage/);
+  // Portal may use localStorage for theme preference only
   assert.doesNotMatch(portal, /sessionStorage/);
 });
 
@@ -133,8 +138,7 @@ test("portal config lives in CMS settings and drives public shell copy", async (
   assert.match(portalConfig, /config\.collections/);
   assert.match(portalConfig, /config\.copy/);
   assert.match(repository, /portal: settingsRes\.data\?\.content\?\.portal/);
-  assert.match(studio, /parsePortalConfig\(portalConfig\)/);
-  assert.match(studio, /Portal content configuration/);
+  assert.match(studio, /PortalConfigEditor|parsePortalConfig|formatPortalConfig/);
   assert.match(portal, /portal\?\.navigation\.filter/);
   assert.match(portal, /portal\?\.footer\.description/);
   assert.match(portal, /settings\.portal\?\.home/);

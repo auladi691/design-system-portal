@@ -11,9 +11,14 @@ import { friendlyErrorMessage } from "@/lib/repository";
 import { pushToast } from "@/lib/toast";
 import { slugify } from "@/lib/slug";
 import type { AppContext } from "@/components/design-system-app";
-import type { Asset, AssetBrand, AssetType } from "@/types/content";
+import { ASSET_PURPOSE_OPTIONS, type Asset, type AssetBrand, type AssetPurpose, type AssetTheme, type AssetType } from "@/types/content";
 
 const BRANDS: AssetBrand[] = ["Shared", "IM3", "Indosat", "Tri", "Partner"];
+const THEMES: { value: AssetTheme; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "both", label: "Both" },
+];
 
 type AssetEditorProps = {
   asset: Asset;
@@ -75,7 +80,7 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
          if (!previousDeleted) pushToast("warning", "The replacement was saved, but the original file could not be removed.");
       }
       setItem(next);
-      pushToast("success", "Replacement file saved.");
+      pushToast("success", "Replacement file saved. All usages now show the new file.");
     } catch (error) {
       pushToast("error", error instanceof Error ? error.message : "We couldn't replace this file.");
     } finally {
@@ -149,6 +154,8 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
           <div>
             <span className="eyebrow">{item.type.replace("-", " ")}</span>
             <h2>Edit asset</h2>
+            <span className={`status ${item.status}`} style={{ display: "inline-block", marginTop: 6 }}>{item.status}</span>
+            <small className="muted-note" style={{ display: "block", marginTop: 8 }}>Asset ID is preserved when replacing — published pages automatically show the new file.</small>
           </div>
           <button onClick={close} aria-label="Close editor"><Icon name="close" /></button>
         </header>
@@ -169,15 +176,32 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
             </select>
           </label>
           <label>Category<input value={item.category} onChange={(e) => update({ category: e.target.value })} /></label>
+          <label>Asset purpose
+            <select value={item.purpose} onChange={(e) => update({ purpose: e.target.value as AssetPurpose })}>
+              {ASSET_PURPOSE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <small className="muted-note">{ASSET_PURPOSE_OPTIONS.find((o) => o.value === item.purpose)?.description}</small>
           <label>Brand
             <select value={item.brand} onChange={(e) => update({ brand: e.target.value as AssetBrand })}>
               {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </label>
+          <label>Theme
+            <select value={item.theme} onChange={(e) => update({ theme: e.target.value as AssetTheme })}>
+              {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
           <label>Version<input value={item.version} onChange={(e) => update({ version: e.target.value })} /></label>
           <label>Description<textarea rows={4} value={item.description} onChange={(e) => update({ description: e.target.value })} /></label>
+          <label>Caption<input value={item.caption} onChange={(e) => update({ caption: e.target.value })} placeholder="Short caption shown with the visual" /></label>
           <label>Keywords<input value={item.keywords.join(", ")} onChange={(e) => update({ keywords: e.target.value.split(",").map((k) => k.trim()).filter(Boolean) })} placeholder="Comma separated" /></label>
           <label>Alternative text<input value={item.altText} onChange={(e) => update({ altText: e.target.value })} placeholder="Describe the asset for screen readers" /></label>
+          <label>Figma URL<input value={item.figmaUrl ?? ""} onChange={(e) => update({ figmaUrl: e.target.value || undefined })} placeholder="https://www.figma.com/file/..." /></label>
+          <label className="inline-check">
+            <input type="checkbox" checked={item.downloadAvailable} onChange={(e) => update({ downloadAvailable: e.target.checked })} />
+            Allow download
+          </label>
           <label>Preview glyph<input value={item.glyph} onChange={(e) => update({ glyph: e.target.value })} maxLength={3} /></label>
 
           <div className="asset-file-info">
@@ -195,6 +219,7 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
             >
               <Icon name="upload" /> {replacing ? "Replacing..." : "Upload replacement file"}
             </button>
+            <small className="muted-note">Replacing keeps the same asset ID — all published pages automatically show the new file.</small>
             <input
               ref={fileInputRef}
               type="file"
@@ -222,7 +247,7 @@ export function AssetEditor({ asset, app, close, onDelete }: AssetEditorProps) {
       <ConfirmDialog
         open={confirmDelete}
         title="Delete asset?"
-        description="This asset and its file will be removed permanently. This action cannot be undone."
+        description="This asset and its file will be removed permanently. This action cannot be undone. Check that no published page is using it first."
         confirmLabel="Delete asset"
         tone="danger"
         onCancel={() => setConfirmDelete(false)}
