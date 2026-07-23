@@ -1,0 +1,77 @@
+# One Design - Supabase CLI configuration
+# Official Supabase CLI config for migration automation
+# Docs: https://supabase.com/docs/guides/local-development/cli/config
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost:54321"
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+port = 54325
+file_size_limit = "50MiB"
+import_path = "./migrations"
+export_path = "./migrations"
+
+[auth]
+enabled = true
+port = 54321
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_confirmations = false
+enable_manual_linking = true
+external_apple_enabled = false
+external_azure_enabled = false
+external_bitbucket_enabled = false
+external_discord_enabled = false
+external_facebook_enabled = false
+external_github_enabled = false
+external_gitlab_enabled = false
+external_google_enabled = false
+external_kakao_enabled = false
+external_keycloak_enabled = false
+external_linkedin_oidc_enabled = false
+external_notion_enabled = false
+external_slack_enabled = false
+external_slack_oidc_enabled = false
+external_spotify_enabled = false
+external_twitch_enabled = false
+external_twitter_enabled = false
+external_workos_enabled = false
+external_zoom_enabled = false
+external_fly_enabled = false
+external_figma_enabled = false
+external_kakao_enabled = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+
+# Custom config for One Design - migrations are in supabase/migrations
+# The CLI will use this directory for db push/pull
+# Production project ref is provided via SUPABASE_PROJECT_REF env/secret during CI

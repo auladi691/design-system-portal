@@ -455,19 +455,20 @@ export async function saveAsset(asset: Asset): Promise<{ ok: boolean; error: str
           delete legacy[col];
         }
       }
-      // If file_path missing, we cannot persist file reference in legacy schema — but try still saving meta as glyph
       const { error: legacyError } = await client.from(ASSET_TABLE).upsert(legacy as never, { onConflict: "id" });
       if (legacyError) {
-        console.warn("saveAsset fallback failed:", legacyError.message);
-        // Surface original + fallback errors for debugging
+        console.warn("saveAsset fallback failed:", legacyError.message, "original:", msg);
+        // Keep user message friendly, log original to console for debugging
         return {
           ok: false,
-          error: `${friendlyErrorMessage(legacyError)} (original: ${msg}) Run migrations 00001 and 00008/00009 in Supabase SQL editor.`,
+          error: friendlyErrorMessage(legacyError),
         };
       }
+      console.warn("saveAsset succeeded via legacy fallback after original error:", msg);
       return { ok: true, error: null };
     }
-    return { ok: false, error: `${friendlyErrorMessage(error)} (${msg})` };
+    console.warn("saveAsset final error:", msg);
+    return { ok: false, error: friendlyErrorMessage(error) };
   }
   return { ok: true, error: null };
 }

@@ -14,7 +14,11 @@
     "validate:artifact": "next build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern build --ignore-pattern worker --ignore-pattern db --ignore-pattern examples",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
-    "db:migrate": "node scripts/supabase-migrate.mjs --yes"
+    "db:migrate": "node scripts/supabase-migrate.mjs --yes",
+    "db:migrate:production": "supabase db push --linked --include-all",
+    "db:migrations:list": "supabase migration list --linked",
+    "db:migrations:verify": "node scripts/verify-production-schema.mjs",
+    "db:migrations:validate": "node scripts/validate-migrations.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.10.3",
