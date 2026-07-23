@@ -560,9 +560,9 @@ export function BulkUploadDialog({
                   <li key={item.id} className={`bulk-queue-item ${item.error ? "has-error" : ""} ${item.done ? "is-done" : ""}`}>
                     <div className="bulk-queue-info">
                       <strong>{item.file.name}</strong>
-                      <small>
-                        {formatFileSize(item.file.size)} · {item.file.type || "unknown"} → {item.destination} · {item.purpose}
-                        {item.visibility === "internal" ? " · internal" : ""}
+                      <small title={`${item.file.name} — ${item.file.size} bytes`}>
+                        {formatFileSize(item.file.size)} · {item.file.type || "empty/type"} → {item.destination} · {item.purpose}
+                        {item.visibility === "internal" ? " · internal" : ""} · ext: {item.file.name.split(".").pop()?.toLowerCase() ?? "—"}
                       </small>
                       {item.validationErrors.length > 0 && (
                         <ul className="bulk-errors" role="alert">
@@ -572,9 +572,11 @@ export function BulkUploadDialog({
                         </ul>
                       )}
                       {item.error && (
-                        <p className="bulk-item-error" role="alert">
-                          {item.error}
-                        </p>
+                        <div className="bulk-item-error" role="alert">
+                          <strong>Upload failed</strong>
+                          <p>{item.error}</p>
+                          <small>Check browser console for details, session, and RLS policies. If storage blocked, sign in again as administrator.</small>
+                        </div>
                       )}
                       {item.done && <p className="bulk-item-success">Saved as {item.result?.status ?? "draft"} to {item.destination}.</p>}
                       {item.uploading && (

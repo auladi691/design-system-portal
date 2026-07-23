@@ -25,6 +25,17 @@ function getConfigForDestination(destination: BulkUploadDestination | AssetType)
   return ASSET_CATEGORY_MAP[destination as AssetType];
 }
 
+function normalizeMime(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // Strip charset and params: "image/svg+xml; charset=utf-8" -> "image/svg+xml"
+  const base = raw.split(";")[0]?.trim().toLowerCase();
+  if (!base) return null;
+  // Normalize common aliases for SVG
+  if (base === "image/svg" || base === "image/svg-xml" || base === "text/xml" || base === "application/xml")
+    return "image/svg+xml";
+  return base;
+}
+
 export function validateAssetFile(
   file: File,
   destination: BulkUploadDestination | AssetType,
@@ -38,17 +49,26 @@ export function validateAssetFile(
   }
 
   const ext = getExtension(file.name);
-  if (!config.allowedExtensions.includes(ext)) {
+  const extLower = ext.toLowerCase();
+  if (!config.allowedExtensions.includes(extLower)) {
     errors.push(
       `This file format is not available for ${config.label.toLowerCase()}. Allowed formats: ${config.allowedExtensions.join(", ")}.`,
     );
   }
 
-  const detectedMime = file.type || guessMimeFromExtension(ext);
-  if (detectedMime && !config.allowedMimeTypes.includes(detectedMime)) {
-    errors.push(
-      `This file type is not available for ${config.label.toLowerCase()}.`,
-    );
+  const rawMime = file.type || guessMimeFromExtension(ext) || "";
+  const detectedMime = normalizeMime(rawMime);
+  const allowedNormalized = config.allowedMimeTypes.map((m) => normalizeMime(m) ?? m.toLowerCase());
+  // If we have a detected mime, check normalized list; allow empty mime (fallback to extension already checked)
+  if (detectedMime && !allowedNormalized.includes(detectedMime)) {
+    // For SVG family, be permissive if extension is svg and detected is something svg-like
+    const isSvgExt = extLower === "svg";
+    const isSvgMime = detectedMime.includes("svg") || detectedMime.includes("xml");
+    if (!(isSvgExt && isSvgMime)) {
+      errors.push(
+        `This file type (${file.type || "unknown"}) is not available for ${config.label.toLowerCase()}. Allowed: ${config.allowedExtensions.join(", ")}.`,
+      );
+    }
   }
 
   if (file.size <= 0) {

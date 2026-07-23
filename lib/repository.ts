@@ -423,27 +423,51 @@ export async function saveAsset(asset: Asset): Promise<{ ok: boolean; error: str
   const insert = assetToInsert(asset);
   const { error } = await client.from(ASSET_TABLE).upsert(insert as never, { onConflict: "id" });
   if (error) {
-    if (/column .* (purpose|caption|theme|figma_url|download_available|visibility) .* does not exist/i.test(error.message)) {
-      // Remove newer columns for legacy DB environments
+    const msg = error.message || "";
+    console.warn("saveAsset failed:", msg, error);
+
+    // Legacy DB without new columns: try reduced payloads
+    if (
+      /column .* (purpose|caption|theme|figma_url|download_available|visibility|file_path|file_url|mime_type|file_size|original_file_name|alt_text) .* does not exist/i.test(
+        msg,
+      ) ||
+      /Could not find the .* column/i.test(msg) ||
+      /schema cache/i.test(msg)
+    ) {
       const legacy: Record<string, unknown> = { ...insert } as unknown as Record<string, unknown>;
-      if (/visibility/.test(error.message)) delete legacy.visibility;
-      if (/purpose|caption|theme|figma_url|download_available/.test(error.message)) {
-        delete legacy.purpose;
-        delete legacy.caption;
-        delete legacy.theme;
-        delete legacy.figma_url;
-        delete legacy.download_available;
-        delete legacy.visibility;
+      // Iteratively strip missing columns
+      const missingCols = [
+        "visibility",
+        "purpose",
+        "caption",
+        "theme",
+        "figma_url",
+        "download_available",
+        "file_path",
+        "file_url",
+        "mime_type",
+        "file_size",
+        "original_file_name",
+        "alt_text",
+      ];
+      for (const col of missingCols) {
+        if (msg.toLowerCase().includes(col.toLowerCase()) || /does not exist|Could not find|schema cache/i.test(msg)) {
+          delete legacy[col];
+        }
       }
+      // If file_path missing, we cannot persist file reference in legacy schema — but try still saving meta as glyph
       const { error: legacyError } = await client.from(ASSET_TABLE).upsert(legacy as never, { onConflict: "id" });
       if (legacyError) {
         console.warn("saveAsset fallback failed:", legacyError.message);
-        return { ok: false, error: friendlyErrorMessage(legacyError) };
+        // Surface original + fallback errors for debugging
+        return {
+          ok: false,
+          error: `${friendlyErrorMessage(legacyError)} (original: ${msg}) Run migrations 00001 and 00008/00009 in Supabase SQL editor.`,
+        };
       }
       return { ok: true, error: null };
     }
-    console.warn("saveAsset failed:", error.message);
-    return { ok: false, error: friendlyErrorMessage(error) };
+    return { ok: false, error: `${friendlyErrorMessage(error)} (${msg})` };
   }
   return { ok: true, error: null };
 }

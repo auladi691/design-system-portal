@@ -116,11 +116,14 @@ async function runWorker(
         result: asset,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "We couldn't upload this file.";
+      // Log for debugging in Studio console
+      console.warn(`Bulk upload failed for ${item.file.name}:`, message, error);
       onItemChange(item.id, {
         uploading: false,
         done: false,
         progress: 0,
-        error: error instanceof Error ? error.message : "We couldn't upload this file.",
+        error: message,
       });
     }
   }

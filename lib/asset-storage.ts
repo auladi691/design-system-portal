@@ -26,6 +26,30 @@ export function buildStoragePath(type: AssetType, file: File): string {
   return `${type}/${year}/${month}/${uuid}-${safe}`;
 }
 
+function mimeForUpload(file: File): string {
+  const raw = file.type?.trim();
+  if (raw) {
+    // Keep original but strip charset param for storage content-type
+    const base = raw.split(";")[0]?.trim();
+    if (base) return base;
+  }
+  // Fallback guess from extension
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    svg: "image/svg+xml",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    pdf: "application/pdf",
+    zip: "application/zip",
+    json: "application/json",
+    fig: "application/octet-stream",
+    sketch: "application/octet-stream",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
+
 export async function uploadAssetFile(
   type: AssetType,
   file: File,
@@ -35,27 +59,38 @@ export async function uploadAssetFile(
     throw new Error("Storage is not configured. Connect Supabase before uploading files.");
   }
   const path = buildStoragePath(type, file);
+  const contentType = mimeForUpload(file);
   const { error } = await client.storage
     .from(STORAGE_BUCKET)
     .upload(path, file, {
       cacheControl: "3600",
       upsert: false,
-      contentType: file.type || "application/octet-stream",
+      contentType,
     });
   if (error) {
-    throw new Error("We could not upload this file. Try again in a moment.");
+    // Surface RLS / JWT errors as friendly but keep detail for debugging
+    const msg = error.message || "";
+    if (/row.*security|policy|permission|not.*allowed/i.test(msg)) {
+      throw new Error(`Storage upload blocked by policy: ${msg} — sign in as administrator and check Storage RLS.`);
+    }
+    if (/JWT|token|expired|session/i.test(msg)) {
+      throw new Error(`Storage session expired: ${msg} — sign in again.`);
+    }
+    throw new Error(`Storage upload failed: ${msg || "We could not upload this file. Try again in a moment."}`);
   }
   const { data: signedUrlData, error: signedUrlError } = await client.storage
     .from(STORAGE_BUCKET)
     .createSignedUrl(path, 3600);
   if (signedUrlError || !signedUrlData.signedUrl) {
     await deleteStoragePath(path);
-    throw new Error("We could not prepare this file for preview. Try again in a moment.");
+    throw new Error(
+      `We could not prepare this file for preview: ${signedUrlError?.message ?? "signed URL failed"} — file was removed. Try again.`,
+    );
   }
   return {
     path,
     url: signedUrlData.signedUrl,
-    mimeType: file.type || null,
+    mimeType: contentType,
     size: file.size,
     originalFileName: file.name,
   };
