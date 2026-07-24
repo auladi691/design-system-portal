@@ -62,7 +62,6 @@ external_workos_enabled = false
 external_zoom_enabled = false
 external_fly_enabled = false
 external_figma_enabled = false
-external_kakao_enabled = false
 
 [auth.email]
 enable_signup = true
